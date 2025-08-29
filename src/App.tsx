@@ -1,27 +1,29 @@
 import React, { useState, useEffect, useCallback, useRef, type FC } from 'react';
 import type { DocumentData } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
-import { 
-    getAuth, 
-    onAuthStateChanged, 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
+import {
+    getAuth,
+    onAuthStateChanged,
+    signInWithEmailAndPassword,
+    createUserWithEmailAndPassword,
     signOut,
     type User
 } from 'firebase/auth';
-import { 
-    getFirestore, 
-    doc, 
-    onSnapshot, 
-    setDoc, 
-    collection, 
-    addDoc, 
-    updateDoc, 
-    deleteDoc, 
-    query, 
-    orderBy, 
+import {
+    getFirestore,
+    doc,
+    onSnapshot,
+    setDoc,
+    collection,
+    addDoc,
+    updateDoc,
+    deleteDoc,
+    query,
+    orderBy,
     getDoc
 } from 'firebase/firestore';
+import { getStorage, ref, uploadString, getDownloadURL } from 'firebase/storage';
+
 
 // --- Configuration ---
 const firebaseConfig = {
@@ -41,6 +43,7 @@ const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app);
 
 // --- Type Definitions ---
 interface Character extends DocumentData {
@@ -187,7 +190,11 @@ const GlobalStyles = () => (
         #image-viewer-modal .modal-content { background: transparent; border: none; width: 90vw; height: 90vh; padding: 0; max-width: 1200px; }
         .image-viewer-container { display: flex; flex-direction: column; width: 100%; height: 100%; }
         .image-viewer-container img { flex-grow: 1; object-fit: contain; width: 100%; height: 80%; border-radius: 8px; }
-        .image-viewer-prompt { background: rgba(0,0,0,0.7); color: white; padding: 1rem; border-radius: 8px; margin-top: 1rem; font-size: 0.9rem; max-height: 20%; overflow-y: auto; }
+        .image-viewer-controls { background: rgba(0,0,0,0.7); color: white; padding: 1rem; border-radius: 8px; margin-top: 1rem; max-height: 20%; display: flex; flex-direction: column; }
+        .image-viewer-prompt { font-size: 0.9rem; overflow-y: auto; margin-bottom: 1rem; flex-grow: 1; }
+        .image-viewer-buttons { display: flex; gap: 1rem; justify-content: center; flex-shrink: 0; }
+        .image-viewer-buttons button { background-color: var(--background-color); color: var(--text-primary-color); padding: 0.75rem 1.5rem; }
+        .image-viewer-buttons button:disabled { background-color: #444; color: var(--text-secondary-color); cursor: not-allowed; }
     `}</style>
 );
 
@@ -246,10 +253,12 @@ function App() {
     
     const [isImageViewerOpen, setImageViewerOpen] = useState(false);
     const [viewingImage, setViewingImage] = useState({ src: '', prompt: '' });
+    const [viewingImageSource, setViewingImageSource] = useState<'gallery' | 'generated'>('generated');
+
 
     const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
-    // --- API Call Functions ---
+    // --- API & Storage Functions ---
     const callApi = useCallback(async (url: string, payload: object) => {
         try {
             const response = await fetch(url, {
@@ -259,11 +268,26 @@ function App() {
             });
             if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
             return await response.json();
-        } catch (error) { 
-            console.error("API call failed:", error); 
-            return { error: "ขออภัยครับ เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI" }; 
+        } catch (error) {
+            console.error("API call failed:", error);
+            return { error: "ขออภัยครับ เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI" };
         }
     }, []);
+
+    const uploadImageAndGetURL = useCallback(async (base64Data: string): Promise<string | null> => {
+        if (!userId) return null;
+        const storageRef = ref(storage, `users/${userId}/images/${Date.now()}.png`);
+        try {
+            const snapshot = await uploadString(storageRef, `data:image/png;base64,${base64Data}`, 'data_url');
+            const downloadURL = await getDownloadURL(snapshot.ref);
+            return downloadURL;
+        } catch (error) {
+            console.error("Error uploading image:", error);
+            alert("เกิดข้อผิดพลาดในการอัปโหลดรูปภาพ");
+            return null;
+        }
+    }, [userId]);
+
 
     // --- Firebase Auth & Data Listeners ---
     useEffect(() => {
@@ -423,7 +447,7 @@ function App() {
     }, [currentMessages]);
 
 
-    // --- UI Handlers ---
+    // --- UI Handlers & Image Logic ---
     const handleSwitchMode = (newMode: string) => {
         setCurrentMode(newMode);
         setActiveCharacterForChat(null);
@@ -440,6 +464,36 @@ function App() {
             saveHistory(updatedHistory);
         }
     };
+    
+    const handleViewImage = (src: string, prompt: string, source: 'gallery' | 'generated') => {
+        setViewingImage({ src, prompt });
+        setViewingImageSource(source);
+        setImageViewerOpen(true);
+    };
+
+    const handleSaveToGallery = useCallback(async (imageUrl: string, prompt: string) => {
+        if (!userId) return;
+
+        let finalImageUrl = imageUrl;
+        // If it's a new, unsaved image (base64), upload it to storage first
+        if (imageUrl.startsWith('data:image')) {
+            const base64Data = imageUrl.split(',')[1];
+            const publicUrl = await uploadImageAndGetURL(base64Data);
+            if (publicUrl) {
+                finalImageUrl = publicUrl;
+            } else {
+                // Upload failed, abort saving.
+                return;
+            }
+        }
+        
+        await addDoc(collection(db, `users/${userId}/gallery`), {
+            imageUrl: finalImageUrl,
+            prompt,
+            createdAt: new Date()
+        });
+    }, [userId, uploadImageAndGetURL]);
+
 
     // --- Component Rendering & Logic ---
 
@@ -505,10 +559,7 @@ function App() {
                                     await deleteDoc(doc(db, `users/${userId}/favorites/${id}`));
                                 }
                             }}
-                            onImageViewerOpen={(src, prompt) => {
-                                setViewingImage({ src, prompt });
-                                setImageViewerOpen(true);
-                            }}
+                            onImageViewerOpen={(src, prompt) => handleViewImage(src, prompt, 'gallery')}
                             onDeleteGalleryItem={async (id) => {
                                 if(window.confirm('คุณต้องการลบรูปภาพนี้ใช่หรือไม่?')) {
                                     await deleteDoc(doc(db, `users/${userId}/gallery/${id}`));
@@ -534,6 +585,8 @@ function App() {
                             chatMessagesEndRef={chatMessagesEndRef}
                             callApi={callApi}
                             userId={userId}
+                            onViewImage={(src, prompt) => handleViewImage(src, prompt, 'generated')}
+                            onSaveToGallery={handleSaveToGallery}
                          />
                     </div>
                      <StatusBar isLoading={isLoadingResponse} onClearHistory={handleClearHistory} />
@@ -545,13 +598,17 @@ function App() {
                     character={editingCharacter} 
                     onClose={() => { setCharModalOpen(false); setEditingCharacter(null); }}
                     userId={userId}
+                    callApi={callApi}
+                    uploadImageAndGetURL={uploadImageAndGetURL}
                 />
             )}
             {isImageViewerOpen && (
                 <ImageViewerModal 
                     src={viewingImage.src} 
                     prompt={viewingImage.prompt} 
-                    onClose={() => setImageViewerOpen(false)} 
+                    onClose={() => setImageViewerOpen(false)}
+                    onSaveToGallery={handleSaveToGallery}
+                    isFromGallery={viewingImageSource === 'gallery'}
                 />
             )}
         </>
@@ -758,9 +815,11 @@ interface ChatPanelProps {
     chatMessagesEndRef: React.RefObject<HTMLDivElement | null>;
     callApi: (url: string, payload: object) => Promise<any>;
     userId: string | null;
+    onViewImage: (src: string, prompt: string) => void;
+    onSaveToGallery: (imageUrl: string, prompt: string) => Promise<void>;
 }
 
-const ChatPanel: FC<ChatPanelProps> = ({ messages, inputValue, setInputValue, onSendMessage, isLoading, currentMode, activeCharacterForChat, chatMessagesEndRef, callApi, userId }) => {
+const ChatPanel: FC<ChatPanelProps> = ({ messages, inputValue, setInputValue, onSendMessage, isLoading, currentMode, activeCharacterForChat, chatMessagesEndRef, callApi, userId, onViewImage, onSaveToGallery }) => {
     
     const placeholders: {[key: string]: string} = {
         'general-chat': 'คุยกับ AI ได้ทุกเรื่องที่นี่...', 'promptmaster': "สร้างฉากไล่ล่าในเมืองตอนกลางคืน...",
@@ -793,6 +852,8 @@ const ChatPanel: FC<ChatPanelProps> = ({ messages, inputValue, setInputValue, on
                         currentMode={currentMode}
                         callApi={callApi}
                         userId={userId}
+                        onViewImage={onViewImage}
+                        onSaveToGallery={onSaveToGallery}
                      />
                 ))}
                 <div ref={chatMessagesEndRef} />
@@ -824,14 +885,19 @@ interface MessageProps {
     currentMode: string;
     callApi: (url: string, payload: object) => Promise<any>;
     userId: string | null;
+    onViewImage: (src: string, prompt: string) => void;
+    onSaveToGallery: (imageUrl: string, prompt: string) => Promise<void>;
 }
-const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMode, callApi, userId }) => {
+const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMode, callApi, userId, onViewImage, onSaveToGallery }) => {
     
     const [generatingImage, setGeneratingImage] = useState(false);
     const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
+    const [isSaved, setIsSaved] = useState(false);
 
     const handleGenerateImage = async (prompt: string) => {
         setGeneratingImage(true);
+        setGeneratedImageUrl(null);
+        setIsSaved(false);
         const negativePromptInput = document.getElementById('negativePromptInput') as HTMLTextAreaElement;
         const negativePrompt = negativePromptInput?.value.trim() || '';
         const finalPrompt = prompt + (negativePrompt ? ` --no ${negativePrompt}` : '');
@@ -842,6 +908,7 @@ const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMod
         setGeneratingImage(false);
         if (result.error || !result.predictions?.[0]?.bytesBase64Encoded) {
              console.error("Image generation failed");
+             alert("ขออภัยครับ ไม่สามารถสร้างภาพได้ในขณะนี้");
         } else {
              const base64Data = result.predictions[0].bytesBase64Encoded;
              const imageUrl = `data:image/png;base64,${base64Data}`;
@@ -851,19 +918,30 @@ const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMod
     
     const handleSaveFavorite = async (prompt: string, button: HTMLButtonElement) => {
         if (!userId) return;
+        button.disabled = true;
         await addDoc(collection(db, `users/${userId}/favorites`), {
             prompt, mode: currentMode, createdAt: new Date()
         });
-        button.textContent = '⭐ บันทึกแล้ว!'; button.disabled = true;
+        button.textContent = '⭐ บันทึกแล้ว!';
         setTimeout(() => { button.textContent = '⭐ บันทึก'; button.disabled = false; }, 2000);
     };
 
-    const handleSaveToGallery = async (imageUrl: string, prompt: string, button: HTMLButtonElement) => {
-        if (!userId) return;
-        await addDoc(collection(db, `users/${userId}/gallery`), {
-            imageUrl, prompt, createdAt: new Date()
-        });
-        button.textContent = '💾 บันทึกแล้ว!'; button.disabled = true;
+    const handleSaveToGalleryClick = async (imageUrl: string, prompt: string, button: HTMLButtonElement) => {
+        button.disabled = true;
+        button.textContent = 'กำลังบันทึก...';
+        await onSaveToGallery(imageUrl, prompt);
+        button.textContent = '💾 บันทึกแล้ว!';
+        setIsSaved(true);
+    };
+    
+    const handleDownloadImage = (imageUrl: string, prompt: string) => {
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        const safePrompt = prompt.substring(0, 30).replace(/[^a-z0-9]/gi, '_');
+        link.download = `nova-ai-${safePrompt}-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
     };
 
 
@@ -899,7 +977,7 @@ const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMod
                     }
                     {generatedImageUrl && 
                         <div>
-                            <img src={generatedImageUrl} className="generated-image" alt="generated content"/>
+                            <img src={generatedImageUrl} className="generated-image" alt="generated content" onClick={() => onViewImage(generatedImageUrl, promptText)} style={{cursor: 'pointer'}} title="คลิกเพื่อดูภาพขนาดเต็ม"/>
                         </div>
                     }
                     <div className="message-actions">
@@ -909,8 +987,9 @@ const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMod
                             setTimeout(() => e.currentTarget.textContent = 'คัดลอก', 2000);
                          }}>คัดลอก</button>
                          <button className="action-btn" onClick={(e) => handleSaveFavorite(promptText, e.currentTarget)}>⭐ บันทึก</button>
-                         {currentMode === 'image' && !generatedImageUrl && <button className="action-btn" onClick={() => handleGenerateImage(promptText)}>🎨 สร้างภาพ</button>}
-                         {generatedImageUrl && <button className="action-btn" onClick={(e) => handleSaveToGallery(generatedImageUrl, promptText, e.currentTarget)}>💾 บันทึก</button>}
+                         {currentMode === 'image' && !generatedImageUrl && !generatingImage && <button className="action-btn" onClick={() => handleGenerateImage(promptText)}>🎨 สร้างภาพ</button>}
+                         {generatedImageUrl && <button className="action-btn" onClick={(e) => handleSaveToGalleryClick(generatedImageUrl, promptText, e.currentTarget)} disabled={isSaved}>💾 บันทึก</button>}
+                         {generatedImageUrl && <button className="action-btn" onClick={() => handleDownloadImage(generatedImageUrl, promptText)}>📥 ดาวน์โหลด</button>}
                     </div>
                 </>
             );
@@ -1006,18 +1085,44 @@ interface CharacterModalProps {
     character: Character | null;
     onClose: () => void;
     userId: string | null;
+    callApi: (url: string, payload: object) => Promise<any>;
+    uploadImageAndGetURL: (base64Data: string) => Promise<string | null>;
 }
-const CharacterModal: FC<CharacterModalProps> = ({ character, onClose, userId }) => {
+const CharacterModal: FC<CharacterModalProps> = ({ character, onClose, userId, callApi, uploadImageAndGetURL }) => {
     const [formData, setFormData] = useState({
         imageUrl: character?.imageUrl || '',
         nickname: character?.nickname || '',
         appearance: character?.appearance || '',
         personality: character?.personality || '',
     });
+    const [isGenerating, setIsGenerating] = useState(false);
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
         setFormData(prev => ({ ...prev, [id]: value }));
+    };
+
+    const handleGeneratePortrait = async () => {
+        if (!formData.appearance) {
+            alert('กรุณาใส่ "รายละเอียดลักษณะภายนอก" เพื่อใช้สร้างภาพโปรไฟล์');
+            return;
+        }
+        setIsGenerating(true);
+        const prompt = `character portrait, ${formData.nickname}, ${formData.appearance}, ${formData.personality}, concept art, detailed, high quality`;
+        const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
+        const result = await callApi(IMAGEN_API_URL, payload);
+
+        if (result.error || !result.predictions?.[0]?.bytesBase64Encoded) {
+             console.error("Portrait generation failed");
+             alert("ขออภัย, ไม่สามารถสร้างภาพได้");
+        } else {
+             const base64Data = result.predictions[0].bytesBase64Encoded;
+             const publicUrl = await uploadImageAndGetURL(base64Data);
+             if (publicUrl) {
+                setFormData(prev => ({ ...prev, imageUrl: publicUrl }));
+             }
+        }
+        setIsGenerating(false);
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -1027,7 +1132,7 @@ const CharacterModal: FC<CharacterModalProps> = ({ character, onClose, userId })
             return;
         }
 
-        const characterData = { ...formData, createdAt: new Date() };
+        const characterData = { ...formData, createdAt: character?.createdAt || new Date() };
 
         try {
             if (character?.id) {
@@ -1050,7 +1155,12 @@ const CharacterModal: FC<CharacterModalProps> = ({ character, onClose, userId })
                 <form onSubmit={handleSubmit} style={{overflowY: 'auto', paddingRight: '1rem'}}>
                     <div className="form-group">
                         <label>ลิงก์รูปโปรไฟล์ (Profile Image URL)</label>
-                        <input type="url" id="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="วาง URL ของรูปภาพที่นี่" />
+                        <div style={{display: 'flex', gap: '0.5rem', alignItems: 'center'}}>
+                            <input type="url" id="imageUrl" value={formData.imageUrl} onChange={handleChange} placeholder="วาง URL หรือสร้างอัตโนมัติ" style={{flexGrow: 1}} />
+                            <button type="button" onClick={handleGeneratePortrait} disabled={isGenerating} style={{padding: '0.5rem'}}>
+                                {isGenerating ? <div className="image-loading-spinner" style={{width: '20px', height: '20px'}}></div> : '🎨 สร้าง'}
+                            </button>
+                        </div>
                     </div>
                     <div className="form-group">
                         <label>ชื่อเรียก/บทบาท*</label>
@@ -1074,15 +1184,54 @@ interface ImageViewerModalProps {
     src: string;
     prompt: string;
     onClose: () => void;
+    onSaveToGallery: (imageUrl: string, prompt: string) => Promise<void>;
+    isFromGallery: boolean;
 }
-const ImageViewerModal: FC<ImageViewerModalProps> = ({ src, prompt, onClose }) => {
+const ImageViewerModal: FC<ImageViewerModalProps> = ({ src, prompt, onClose, onSaveToGallery, isFromGallery }) => {
+    const [isSaved, setIsSaved] = useState(isFromGallery);
+
+    const handleDownload = () => {
+        const link = document.createElement('a');
+        link.href = src;
+        const safePrompt = prompt.substring(0, 30).replace(/[^a-z0-9]/gi, '_');
+        link.download = `nova-ai-${safePrompt}-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    };
+
+    const handleCopyPrompt = (e: React.MouseEvent<HTMLButtonElement>) => {
+        navigator.clipboard.writeText(prompt);
+        const target = e.currentTarget;
+        target.textContent = 'คัดลอกแล้ว!';
+        setTimeout(() => { target.textContent = '📋 คัดลอก Prompt'; }, 2000);
+    };
+
+    const handleSave = async (e: React.MouseEvent<HTMLButtonElement>) => {
+        const target = e.currentTarget;
+        target.disabled = true;
+        target.textContent = 'กำลังบันทึก...';
+        await onSaveToGallery(src, prompt);
+        target.textContent = 'บันทึกแล้ว!';
+        setIsSaved(true);
+    };
+
     return (
         <div className="modal show" id="image-viewer-modal" onClick={onClose}>
             <span className="close-btn" style={{ color: 'white', fontSize: '40px' }}>&times;</span>
             <div className="modal-content" onClick={e => e.stopPropagation()}>
                 <div className="image-viewer-container">
                     <img src={src} alt={prompt} />
-                    <div className="image-viewer-prompt">{prompt}</div>
+                    <div className="image-viewer-controls">
+                        <div className="image-viewer-prompt">{prompt}</div>
+                        <div className="image-viewer-buttons">
+                            <button onClick={handleDownload}>📥 ดาวน์โหลด</button>
+                            <button onClick={handleCopyPrompt}>📋 คัดลอก Prompt</button>
+                            <button onClick={handleSave} disabled={isSaved}>
+                                {isSaved ? 'บันทึกใน Gallery แล้ว' : '💾 บันทึกลง Gallery'}
+                            </button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1091,4 +1240,5 @@ const ImageViewerModal: FC<ImageViewerModalProps> = ({ src, prompt, onClose }) =
 
 
 export default App;
+
 
