@@ -1,0 +1,1336 @@
+<!DOCTYPE html>
+<html lang="th">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Prompt D Generator (Sync Edition)</title>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- FirebaseUI CSS -->
+    <link type="text/css" rel="stylesheet" href="https://www.gstatic.com/firebasejs/ui/4.8.1/firebase-ui-auth.css" />
+    <style>
+        /* CSS Variables */
+        :root {
+            --background-color: #121212;
+            --surface-color: #1e1e1e;
+            --primary-color: #bb86fc;
+            --primary-variant-color: #3700b3;
+            --secondary-color: #03dac6;
+            --text-primary-color: #e0e0e0;
+            --text-secondary-color: #a0a0a0;
+            --border-color: #333;
+            --error-color: #cf6679;
+            --success-color: #4caf50;
+            --font-family: 'Kanit', sans-serif;
+        }
+
+        /* General Styles */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html,
+        body {
+            font-family: var(--font-family);
+            background-color: var(--background-color);
+            color: var(--text-primary-color);
+            line-height: 1.6;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+        
+        button, input, select, textarea {
+            font-family: var(--font-family);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            background-color: #2a2a2a;
+            color: var(--text-primary-color);
+            padding: 0.5rem 1rem;
+        }
+        
+        button {
+            cursor: pointer;
+            transition: background-color 0.2s ease, transform 0.1s ease;
+        }
+
+        button:hover {
+            background-color: #3a3a3a;
+        }
+        
+        button:active {
+            transform: scale(0.98);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.5;
+        }
+        
+        /* Header */
+        .header {
+            background-color: var(--surface-color);
+            padding: 1rem;
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+        }
+
+        .logo-icon {
+            font-size: 2.5rem;
+            margin-right: 1rem;
+        }
+
+        .logo-text h1 {
+            font-size: 1.5rem;
+            margin: 0;
+        }
+
+        .logo-text p {
+            font-size: 0.9rem;
+            color: var(--text-secondary-color);
+            margin: 0;
+        }
+
+        .auth-section {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .login-btn {
+            background-color: var(--primary-color);
+            color: black;
+            font-weight: 600;
+        }
+
+        .user-profile {
+            display: none; /* Hidden by default */
+            align-items: center;
+            gap: 0.75rem;
+        }
+        
+        #user-email {
+            font-size: 0.9rem;
+            color: var(--text-secondary-color);
+        }
+
+        .logout-btn {
+            background-color: var(--error-color);
+            color: white;
+            padding: 0.5rem 1rem;
+        }
+
+        /* Mode Selector */
+        .mode-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            background-color: var(--background-color);
+            padding: 0.5rem;
+            border-radius: 8px;
+            margin-top: 1rem;
+        }
+        
+        .mode-btn {
+            flex-grow: 1;
+            padding: 0.75rem 1rem;
+            font-size: 0.9rem;
+            border: 1px solid transparent;
+            background-color: #2a2a2a;
+        }
+        
+        .mode-btn.active {
+            background-color: var(--primary-color);
+            color: black;
+            font-weight: 600;
+            border-color: var(--primary-color);
+        }
+        
+        .mobile-mode-dropdown {
+            display: none;
+            width: 100%;
+            padding: 0.75rem;
+            font-size: 1rem;
+            margin-top: 1rem;
+        }
+        
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex-grow: 1;
+            gap: 1rem;
+            overflow: hidden;
+        }
+        
+        .info-panel,
+        .side-panel { /* Generic class for left panels */
+            width: 35%;
+            background-color: var(--surface-color);
+            padding: 1.5rem;
+            border-radius: 12px;
+            overflow-y: auto;
+            border: 1px solid var(--border-color);
+        }
+
+        .info-panel h3, .side-panel h3 {
+            color: var(--primary-color);
+            margin-bottom: 1rem;
+            border-bottom: 2px solid var(--primary-color);
+            padding-bottom: 0.5rem;
+        }
+
+        .tip-card {
+            background-color: #2a2a2a;
+            border-radius: 8px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .tip-card h4 {
+            margin-bottom: 0.5rem;
+        }
+
+        .tip-card p {
+            font-size: 0.9rem;
+            color: var(--text-secondary-color);
+        }
+        
+        /* Chat Panel */
+        .chat-panel {
+            width: 65%;
+            display: flex;
+            flex-direction: column;
+            background-color: var(--surface-color);
+            border-radius: 12px;
+            overflow: hidden;
+            border: 1px solid var(--border-color);
+        }
+        
+        .chat-messages {
+            flex-grow: 1;
+            padding: 1.5rem;
+            overflow-y: auto;
+        }
+        
+        .message {
+            display: flex;
+            margin-bottom: 1.5rem;
+            max-width: 90%;
+        }
+
+        .message-avatar {
+            font-size: 1.5rem;
+            margin-right: 1rem;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            background-color: var(--background-color);
+            flex-shrink: 0;
+        }
+        
+        .message-content {
+            background-color: #2a2a2a;
+            padding: 1rem;
+            border-radius: 12px;
+            flex-grow: 1;
+            word-wrap: break-word;
+            position: relative;
+        }
+        
+        .message-content h3 { margin-top: 1rem; color: var(--secondary-color); }
+        .message-content strong { color: var(--primary-color); }
+        .message-content br { content: ""; display: block; margin-bottom: 0.5em; }
+
+
+        .message.user {
+            margin-left: auto;
+            flex-direction: row-reverse;
+        }
+
+        .message.user .message-avatar {
+            margin-left: 1rem;
+            margin-right: 0;
+        }
+
+        .message.user .message-content {
+            background-color: var(--primary-variant-color);
+        }
+
+        .message-content pre {
+            background-color: #111;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+        
+        .message-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            border-top: 1px solid var(--border-color);
+            padding-top: 0.75rem;
+        }
+
+        .action-btn {
+            font-size: 0.8rem;
+            padding: 0.25rem 0.75rem;
+            background-color: #3a3a3a;
+        }
+        
+        .generated-image {
+            max-width: 100%;
+            border-radius: 8px;
+            margin-top: 1rem;
+            border: 1px solid var(--border-color);
+        }
+
+        .image-loading-placeholder {
+             background-color: #2a2a2a;
+             border-radius: 8px;
+             display: flex;
+             flex-direction: column;
+             align-items: center;
+             justify-content: center;
+             padding: 2rem;
+             margin-top: 1rem;
+             border: 1px dashed var(--border-color);
+        }
+        
+        .image-loading-spinner {
+            border: 4px solid rgba(255, 255, 255, 0.2);
+            border-left-color: var(--secondary-color);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+
+        .message.loading .message-content {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .typing-indicator {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-indicator span {
+            width: 8px;
+            height: 8px;
+            background-color: var(--text-secondary-color);
+            border-radius: 50%;
+            animation: typing 1s infinite ease-in-out;
+        }
+
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-5px); }
+        }
+        
+        /* Chat Input */
+        .chat-input-area {
+            padding: 1rem;
+            background-color: var(--background-color);
+            border-top: 1px solid var(--border-color);
+        }
+
+        .input-wrapper {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .idea-btn {
+            padding: 0.75rem;
+            font-size: 1rem;
+            background-color: #3a3a3a;
+            border: 1px solid var(--border-color);
+        }
+        
+        .message-input {
+            flex-grow: 1;
+            resize: none;
+            padding: 0.75rem;
+            border-radius: 8px;
+            min-height: 50px;
+        }
+        
+        .send-btn {
+            padding: 0.75rem 1.5rem;
+            background-color: var(--primary-color);
+            color: black;
+            font-weight: 600;
+            border: none;
+        }
+        
+        .send-btn:hover {
+            background-color: #a765f8;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.8rem;
+            padding-top: 0.5rem;
+            color: var(--text-secondary-color);
+        }
+        
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .main-content {
+                flex-direction: column;
+            }
+            .info-panel, .side-panel, .chat-panel {
+                width: 100%;
+            }
+            .info-panel, .side-panel {
+                max-height: 40vh;
+            }
+        }
+        
+        @media (max-width: 768px) {
+            body { overflow: auto; }
+            .container { padding: 0.5rem; }
+            .header-top { flex-direction: column; align-items: flex-start; gap: 1rem;}
+            .mode-selector, .mobile-mode-dropdown { margin-top: 1rem; }
+            .info-panel, .side-panel { display: none; }
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.7);
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.show {
+            display: flex;
+        }
+
+        .modal-content {
+            background-color: var(--surface-color);
+            margin: auto;
+            padding: 2rem;
+            border: 1px solid var(--border-color);
+            width: 90%;
+            max-width: 800px;
+            border-radius: 12px;
+            position: relative;
+            max-height: 90vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #loginModal .modal-content {
+            max-width: 400px;
+        }
+
+        .close-btn {
+            position: absolute;
+            top: 1rem;
+            right: 1rem;
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            background: none;
+            border: none;
+            cursor: pointer;
+        }
+
+        .modal-content h2 {
+            margin-bottom: 1.5rem;
+            color: var(--primary-color);
+            text-align: center;
+        }
+
+        .form-section {
+            margin-bottom: 1.5rem;
+            padding-bottom: 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .form-section:last-child {
+            border-bottom: none;
+        }
+
+        .form-row {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+        
+        .form-group {
+            flex-grow: 1;
+            min-width: 200px;
+            margin-bottom: 1rem;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.5rem;
+            color: var(--text-secondary-color);
+        }
+
+        .template-input, .template-select, .template-textarea {
+            width: 100%;
+            padding: 0.75rem;
+        }
+
+        /* Full screen loader */
+        #loader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            color: white;
+            flex-direction: column;
+            gap: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <!-- App container -->
+    <div class="container" id="app-container" style="display: none;">
+        <!-- Header -->
+        <div class="header">
+            <div class="header-top">
+                <div class="logo">
+                    <div class="logo-icon">🎬</div>
+                    <div class="logo-text">
+                        <h1>Prompt Generator</h1>
+                        <p>เครื่องมือสร้างสรรค์เรื่องราว (Storyteller Edition)</p>
+                    </div>
+                </div>
+                <div class="auth-section">
+                    <div class="user-profile" id="user-profile">
+                        <span id="user-email"></span>
+                        <button class="logout-btn" id="logout-btn">ออกจากระบบ</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mode Selector -->
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="promptmaster">🎥 Prompt Master</button>
+                <button class="mode-btn" data-mode="novel-writer">📖 นักเขียนนิยาย</button>
+                <button class="mode-btn" data-mode="char-chat">💬 คุยกับตัวละคร</button>
+                <button class="mode-btn" data-mode="storyboard">📜 Storyboard</button>
+                <button class="mode-btn" data-mode="image">🖼️ Image Prompt</button>
+                <button class="mode-btn" data-mode="analyzer">🧐 Prompt Analyzer</button>
+                <button class="mode-btn" data-mode="character">🧙 สร้างตัวละคร</button>
+                <button class="mode-btn" data-mode="library">🗂️ คลังตัวละคร</button>
+                <button class="mode-btn" data-mode="favorites">⭐ Prompt โปรด</button>
+            </div>
+             <select class="mobile-mode-dropdown">
+                <option value="promptmaster">🎥 Prompt Master</option>
+                <option value="novel-writer">📖 นักเขียนนิยาย</option>
+                <option value="char-chat">💬 คุยกับตัวละคร</option>
+                <option value="storyboard">📜 Storyboard</option>
+                <option value="image">🖼️ Image Prompt</option>
+                <option value="analyzer">🧐 Prompt Analyzer</option>
+                <option value="character">🧙 สร้างตัวละคร</option>
+                <option value="library">🗂️ คลังตัวละคร</option>
+                <option value="favorites">⭐ Prompt โปรด</option>
+            </select>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Left Side Panel (Info, Libraries, etc.) -->
+            <div class="side-panel" id="sidePanelContainer">
+                <!-- Content will be injected by JS -->
+            </div>
+            
+            <!-- Chat Panel -->
+            <div class="chat-panel">
+                <div class="chat-messages" id="chatMessages">
+                    <!-- Messages will be rendered here -->
+                </div>
+                <div class="chat-input-area">
+                    <div class="input-wrapper">
+                        <button id="ideaBtn" class="idea-btn" title="✨ แนะนำไอเดีย">💡</button>
+                        <textarea id="messageInput" class="message-input" placeholder="อธิบายวิดีโอที่ต้องการ..." rows="1"></textarea>
+                        <button id="sendButton" class="send-btn">สร้าง ✨</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <span id="statusBarText">สถานะ: พร้อมใช้งาน</span>
+            <button id="clearHistoryBtn" style="font-size: 0.8rem; padding: 0.25rem 0.5rem; background: #555;">ล้างประวัติ</button>
+        </div>
+    </div>
+    
+    <!-- Login Modal -->
+     <div id="loginModal" class="modal">
+        <div class="modal-content">
+            <h2>ยินดีต้อนรับ!</h2>
+            <p style="text-align:center; color: var(--text-secondary-color); margin-bottom: 2rem;">กรุณาเข้าสู่ระบบเพื่อบันทึกและซิงค์ข้อมูลของคุณ</p>
+            <div id="firebaseui-auth-container"></div>
+        </div>
+    </div>
+    
+    <!-- Loader -->
+    <div id="loader">
+        <div class="image-loading-spinner"></div>
+        <p>กำลังโหลด...</p>
+    </div>
+
+    <!-- Modals -->
+    <div id="characterCreatorModal" class="modal">
+        <div class="modal-content">
+            <span class="close-btn">&times;</span>
+            <h2>🧙 สร้างตัวละคร</h2>
+            <div id="characterFormContainer" style="overflow-y: auto; padding-right: 1rem;">
+                <div class="form-section">
+                     <div class="form-group">
+                        <label>ชื่อเรียก/บทบาท*</label>
+                        <input type="text" id="charNickname" class="template-input" placeholder='เช่น "CEO สาว", "นักสืบพเนจร"'>
+                    </div>
+                    <div class="form-group">
+                        <label>รายละเอียดลักษณะภายนอก*</label>
+                        <textarea id="charAppearance" class="template-textarea" rows="4" placeholder="เช่น หญิงสาวอายุ 25 ปี, ผมสีดำยาว, ตาสีน้ำตาล, รูปร่างสมส่วน, สวมชุดสูทสีเทา"></textarea>
+                    </div>
+                     <div class="form-group">
+                        <label>บุคลิกและนิสัย</label>
+                        <textarea id="charPersonality" class="template-textarea" rows="3" placeholder="เช่น มั่นใจ, ฉลาด, อบอุ่น, พูดจาฉะฉาน"></textarea>
+                    </div>
+                </div>
+                <button id="saveCharacterBtn" style="width: 100%; padding: 0.75rem; background-color: var(--primary-color); color: black; font-weight: 600;">บันทึกตัวละคร</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/ui/4.8.1/firebase-ui-auth.js"></script>
+    <script type="module">
+        // --- Firebase SDKs ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+        import { getAuth, onAuthStateChanged, GoogleAuthProvider, EmailAuthProvider, signOut } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, addDoc, collection, deleteDoc, query, getDocs, orderBy } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+        document.addEventListener('DOMContentLoaded', () => {
+            // --- Element References ---
+            const loader = document.getElementById('loader');
+            const loginModal = document.getElementById('loginModal');
+            const appContainer = document.getElementById('app-container');
+            const userProfile = document.getElementById('user-profile');
+            const userEmail = document.getElementById('user-email');
+            const logoutBtn = document.getElementById('logout-btn');
+
+            const modeButtons = document.querySelectorAll('.mode-btn');
+            const mobileModeDropdown = document.querySelector('.mobile-mode-dropdown');
+            const sidePanelContainer = document.getElementById('sidePanelContainer');
+            const chatMessages = document.getElementById('chatMessages');
+            const messageInput = document.getElementById('messageInput');
+            const sendButton = document.getElementById('sendButton');
+            const ideaBtn = document.getElementById('ideaBtn');
+            const clearHistoryBtn = document.getElementById('clearHistoryBtn');
+            const statusBarText = document.getElementById('statusBarText');
+
+            let currentMode = 'promptmaster';
+            let chatHistory = {};
+            let isLoading = false;
+            let activeCharacterForChat = null;
+            
+            // --- Firebase Variables ---
+            let db, auth, userId;
+            let unsubscribeChatHistory, unsubscribeCharacters, unsubscribeFavorites;
+
+            // --- Firebase Configuration ---
+            const firebaseConfig = {
+                apiKey: "AIzaSyCnQevJTgS4Hk-sr8EiK3fOLPxmrKT5F90",
+                authDomain: "chatbot-2086b.firebaseapp.com",
+                projectId: "chatbot-2086b",
+                storageBucket: "chatbot-2086b.appspot.com", // Corrected storage bucket
+                messagingSenderId: "102147147231",
+                appId: "1:102147147231:web:3e06c1f6945913c7dbb06a",
+                measurementId: "G-8777KRHH1Q"
+            };
+
+
+            // --- Gemini API Configuration ---
+            const API_KEY = "AIzaSyCu3l1SyGm_gIc8i96Kw2RfawVU4DFxB3A";
+            const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${API_KEY}`;
+            const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/imagen-3.0-generate-002:predict?key=${API_KEY}`;
+            
+            // --- Firebase Initialization and Auth ---
+            function initializeFirebase() {
+                try {
+                    const app = initializeApp(firebaseConfig);
+                    auth = getAuth(app);
+                    db = getFirestore(app);
+                    
+                    const ui = new firebaseui.auth.AuthUI(auth);
+
+                    onAuthStateChanged(auth, user => {
+                        if (user) {
+                            userId = user.uid;
+                            console.log("Firebase Auth: Signed in with UID:", userId);
+                            
+                            loginModal.classList.remove('show');
+                            loader.style.display = 'none';
+                            appContainer.style.display = 'flex';
+                            userProfile.style.display = 'flex';
+                            userEmail.textContent = user.email || "Anonymous User";
+
+                            setupAllListeners();
+                        } else {
+                            loader.style.display = 'none';
+                            appContainer.style.display = 'none';
+                            userProfile.style.display = 'none';
+                            loginModal.classList.add('show');
+                            
+                            ui.start('#firebaseui-auth-container', {
+                                signInOptions: [
+                                    GoogleAuthProvider.PROVIDER_ID,
+                                    EmailAuthProvider.PROVIDER_ID
+                                ],
+                                signInSuccessUrl: '#',
+                                callbacks: {
+                                    signInSuccessWithAuthResult: function(authResult, redirectUrl) {
+                                        return false;
+                                    }
+                                }
+                            });
+                        }
+                    });
+                } catch (error) {
+                    console.error("Firebase initialization failed:", error);
+                    loader.innerHTML = `<p>เกิดข้อผิดพลาดในการโหลดแอปพลิเคชัน: ${error.message}</p>`;
+                }
+            }
+
+            // --- Real-time Data Listeners ---
+            function setupAllListeners() {
+                if (!userId) return;
+                if (unsubscribeChatHistory) unsubscribeChatHistory();
+                if (unsubscribeCharacters) unsubscribeCharacters();
+                if (unsubscribeFavorites) unsubscribeFavorites();
+
+                const chatDocRef = doc(db, "users", userId);
+                unsubscribeChatHistory = onSnapshot(chatDocRef, (doc) => {
+                    chatHistory = doc.exists() ? doc.data().chatHistory || {} : {};
+                    console.log("Chat history synced from Firestore.");
+                    renderChatHistory(); 
+                });
+            }
+
+            // --- Content and Prompts ---
+            const panelContent = {
+                promptmaster: `<h3>🎥 Prompt Master</h3><div class="tip-card"><h4>สร้าง Prompt วิดีโอระดับมืออาชีพ</h4><p>แค่บอกไอเดียของคุณ แล้ว Gemini จะช่วยเปลี่ยนให้เป็น Prompt ที่ละเอียดและพร้อมใช้งานทันที คุณสามารถคุยต่อเพื่อปรับแก้ได้</p></div>`,
+                scenepro: `
+                    <h3>🎬 Scene Pro Template</h3>
+                    <div class="tip-card">
+                        <h4>กรอกข้อมูลเพื่อสร้าง Prompt โฆษณา</h4>
+                        <div class="form-group"><label>ชื่อสินค้า</label><input type="text" id="productName" class="template-input" placeholder="เช่น น้ำหอม 'Midnight Bloom'"></div>
+                        <div class="form-group"><label>คุณสมบัติเด่น</label><textarea id="productFeatures" class="template-textarea" rows="3" placeholder="เช่น กลิ่นหอมลึกลับ, ติดทนนาน"></textarea></div>
+                        <div class="form-group"><label>กลุ่มเป้าหมาย</label><input type="text" id="targetAudience" class="template-input" placeholder="เช่น ผู้หญิงวัยทำงาน"></div>
+                        <div class="form-group"><label>อารมณ์/คอนเซ็ปต์</label><input type="text" id="moodConcept" class="template-input" placeholder="เช่น ลึกลับ, น่าค้นหา, สง่างาม"></div>
+                        <button id="generateFromTemplateBtn" style="width:100%; padding: 0.75rem; margin-top: 1rem; background-color: var(--secondary-color); color:black; font-weight: 600;">สร้าง Prompt จากเทมเพลต ✨</button>
+                    </div>`,
+                storyboard: `<h3>📜 Storyboard Mode</h3><div class="tip-card"><h4>สร้าง Storyboard จากเรื่องย่อ</h4><p>ใส่ไอเดียหรือพล็อตเรื่องสั้นๆ ของคุณ แล้ว Gemini จะช่วยแตกออกมาเป็น Prompt สำหรับแต่ละฉาก (Scene) 3-5 ฉากให้โดยอัตโนมัติ</p></div>`,
+                image: `
+                    <h3>🖼️ Image Prompt Creator</h3><div class="tip-card"><h4>สร้าง Prompt สำหรับรูปภาพ</h4><p>บรรยายภาพในจินตนาการของคุณ แล้ว Gemini จะสร้าง Prompt ที่ละเอียดเพื่อให้ AI สร้างภาพได้ตรงใจที่สุด</p></div>
+                    <div class="tip-card"><h4>🚫 Negative Prompt (สิ่งที่ไม่ต้องการ)</h4><div class="form-group"><textarea id="negativePromptInput" class="template-textarea" rows="2" placeholder="เช่น text, watermark, ugly, deformed..."></textarea></div></div>`,
+                analyzer: `<h3>🧐 Prompt Analyzer</h3><div class="tip-card"><h4>วิเคราะห์และปรับปรุง Prompt</h4><p>วาง Prompt ที่คุณมีอยู่ แล้ว Gemini จะช่วยวิเคราะห์จุดแข็ง จุดอ่อน และให้คำแนะนำเพื่อปรับปรุงให้ดีขึ้น</p></div>`,
+                character: `<h3>🧙 สร้างตัวละคร</h3><div class="tip-card"><h4>สร้างโปรไฟล์ตัวละคร</h4><p>คลิก "สร้างตัวละครใหม่" เพื่อสร้างโปรไฟล์ตัวละครสำหรับเรื่องราวของคุณ</p></div><button id="newCharacterBtn" style="width:100%; padding: 0.75rem; margin-top: 1rem; background-color: var(--primary-color); color:black; font-weight: 600;">+ สร้างตัวละครใหม่</button>`,
+                library: `<h3>🗂️ คลังตัวละคร</h3><p style="color:var(--text-secondary-color); font-size: 0.9rem; margin-bottom: 1rem;">ตัวละครของคุณจะถูกซิงค์ข้ามอุปกรณ์</p><div id="characterList"></div>`,
+                favorites: `<h3>⭐ Prompt โปรด</h3><p style="color:var(--text-secondary-color); font-size: 0.9rem; margin-bottom: 1rem;">Prompt ที่คุณบันทึกไว้จะถูกซิงค์ข้ามอุปกรณ์</p><div id="favoritesList"></div>`,
+                'char-chat': `<h3>💬 คุยกับตัวละคร</h3><div id="charChatPanel"></div>`,
+                'novel-writer': `
+                    <h3>📖 นักเขียนนิยาย</h3>
+                    <div class="tip-card">
+                        <h4>ตั้งค่าเรื่องราวของคุณ</h4>
+                        <div class="form-group">
+                            <label>แนวเรื่อง (Genre)</label>
+                            <input type="text" id="novelGenre" class="template-input" list="genres" placeholder="เช่น แฟนตาซี, สืบสวน, รักโรแมนติก">
+                            <datalist id="genres"><option value="แฟนตาซี"><option value="ไซไฟ"><option value="สืบสวนสอบสวน"><option value="รักโรแมนติก"><option value="สยองขวัญ"></datalist>
+                        </div>
+                        <div class="form-group">
+                            <label>เลือกตัวละครเอก (ถ้ามี)</label>
+                            <select id="novelCharacterSelect" class="template-select"><option value="">-- ไม่เลือก --</option></select>
+                        </div>
+                        <div class="form-group">
+                            <label>ไอเดีย/พล็อตเรื่องเริ่มต้น</label>
+                            <textarea id="novelPlot" class="template-textarea" rows="4" placeholder="เช่น ชายหนุ่มคนหนึ่งตื่นขึ้นมาในโลกที่ไม่คุ้นเคยพร้อมกับนาฬิกาพกปริศนา..."></textarea>
+                        </div>
+                        <button id="generateNovelBtn" style="width:100%; padding: 0.75rem; margin-top: 1rem; background-color: var(--secondary-color); color:black; font-weight: 600;">เริ่มเขียนนิยาย ✨</button>
+                    </div>`,
+            };
+            
+            const systemPrompts = {
+                 promptmaster: "You are an expert prompt engineer for text-to-video AI. Your task is to take a user's idea (which may be a follow-up to a previous prompt) and generate a single, detailed, professional, cinematic prompt IN ENGLISH. Incorporate previous context if the user is refining the prompt. The prompt must include details about cinematography, camera angles, lighting, mood, and visual style. Do not ask questions, just provide the final prompt.",
+                 scenepro: "You are a creative director for product commercials. Convert the user's request into a compelling, short video prompt IN ENGLISH. Focus on visual storytelling, camera work, and appealing aesthetics. If the user provides feedback, refine the previous prompt. Provide only the final prompt.",
+                 storyboard: "You are an expert scriptwriter and storyboard artist. Your task is to take a user's short story, plot, or idea and break it down into 3-5 distinct scenes suitable for a short video. For each scene, create a detailed text-to-video prompt IN ENGLISH. The output should be in THAI, clearly structured using Markdown with headings for each scene (e.g., '### ฉากที่ 1: ...'). Each prompt must be inside a separate code block and include cinematic details like camera shots, angles, lighting, and character actions. Start directly with the first scene.",
+                 image: "You are an expert prompt creator for image generation AI. Transform the user's idea into a highly detailed and effective prompt IN ENGLISH. The prompt should be a comma-separated list of keywords. If the user provides feedback, refine the previous prompt. Provide only the final prompt.",
+                 analyzer: "You are a world-class prompt engineering analyst. Your task is to analyze the user's provided prompt. Provide a structured analysis in THAI with the following sections using markdown: '**จุดแข็ง (Strengths):**', '**ข้อเสนอแนะเพื่อปรับปรุง (Suggestions for Improvement):**', and '**Prompt ที่ปรับปรุงแล้ว (Improved Prompt):**'. Be constructive and clear.",
+                 character: "You are a creative writer. Based on the user's input, generate a detailed character profile in THAI, clearly structured with '**ลักษณะภายนอก:**' and '**บุคลิก:**' sections. Make the descriptions vivid.",
+                 'novel-writer': "You are a professional novel writer. Your task is to write a compelling short story (around 300-500 words) in Thai. The user will provide the genre, protagonist details (if any), and a starting plot. Write in an engaging, narrative style, using rich descriptions and dialogue. If the user says 'เขียนต่อ' or similar, continue the story logically from where it left off.",
+            };
+
+
+            // --- API Call Functions ---
+            async function callApi(url, payload) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    if (!response.ok) throw new Error(`API error: ${response.status} ${response.statusText}`);
+                    return await response.json();
+                } catch (error) { 
+                    console.error("API call failed:", error); 
+                    return { error: "ขออภัยครับ เกิดข้อผิดพลาดในการเชื่อมต่อกับ AI" }; 
+                }
+            }
+            
+            async function callGeminiAPI(history, systemInstruction) {
+                setLoading(true);
+                const payload = { contents: history, systemInstruction: { parts: [{ text: systemInstruction }] } };
+                const result = await callApi(GEMINI_API_URL, payload);
+                setLoading(false);
+                if (result.error) return result.error;
+                const candidate = result.candidates?.[0];
+                return (candidate && candidate.content?.parts?.[0]?.text) ? candidate.content.parts[0].text : "ไม่ได้รับคำตอบที่ถูกต้องจาก AI";
+            }
+            
+            async function callImagenAPI(prompt, messageDiv) {
+                const placeholder = messageDiv.querySelector('.image-loading-placeholder');
+                if(placeholder) placeholder.style.display = 'flex';
+                const payload = { instances: [{ prompt }], parameters: { "sampleCount": 1 } };
+                const result = await callApi(IMAGEN_API_URL, payload);
+                if (placeholder) placeholder.remove();
+                if (result.error || !result.predictions?.[0]?.bytesBase64Encoded) {
+                    messageDiv.innerHTML += `<p style="color:var(--error-color)">สร้างภาพไม่สำเร็จ</p>`;
+                    return;
+                }
+                const base64Data = result.predictions[0].bytesBase64Encoded;
+                const imageUrl = `data:image/png;base64,${base64Data}`;
+                const img = document.createElement('img');
+                img.src = imageUrl; img.className = 'generated-image'; img.alt = prompt;
+                messageDiv.appendChild(img);
+            }
+            
+            // --- UI & State Management ---
+            function setLoading(state) {
+                isLoading = state;
+                [sendButton, ideaBtn, messageInput].forEach(el => el.disabled = state);
+                statusBarText.textContent = state ? 'สถานะ: AI กำลังประมวลผล...' : `สถานะ: พร้อมใช้งาน (ID: ${userId.substring(0, 6)})`;
+            }
+            
+            function switchMode(newMode) {
+                currentMode = newMode;
+                activeCharacterForChat = null;
+                updateUIForMode();
+                renderChatHistory();
+            }
+
+            function updateUIForMode() {
+                modeButtons.forEach(btn => btn.classList.toggle('active', btn.dataset.mode === currentMode));
+                mobileModeDropdown.value = currentMode;
+                sidePanelContainer.innerHTML = panelContent[currentMode];
+                
+                const newCharBtn = document.getElementById('newCharacterBtn');
+                if (newCharBtn) newCharBtn.addEventListener('click', openCharacterModal);
+
+                const templateBtn = document.getElementById('generateFromTemplateBtn');
+                if (templateBtn) templateBtn.addEventListener('click', generateFromTemplate);
+                
+                const novelBtn = document.getElementById('generateNovelBtn');
+                if (novelBtn) {
+                    populateCharacterDropdown();
+                    novelBtn.addEventListener('click', startNovelGeneration);
+                }
+
+                if (currentMode === 'library') loadCharacters();
+                if (currentMode === 'favorites') loadFavorites();
+                if (currentMode === 'char-chat') renderCharChatPanel();
+                
+                const placeholders = {
+                    promptmaster: "สร้างฉากไล่ล่าในเมืองตอนกลางคืน...",
+                    scenepro: "ใช้เทมเพลตด้านซ้ายเพื่อสร้าง Prompt...",
+                    storyboard: "เรื่องย่อ: นักบินอวกาศค้นพบดาวเคราะห์ดวงใหม่...",
+                    image: "แมวใส่แว่นกันแดดบนชายหาด...",
+                    analyzer: "วาง Prompt ที่ต้องการวิเคราะห์ที่นี่...",
+                    character: "คลิก 'สร้างตัวละครใหม่' ด้านซ้าย...",
+                    'char-chat': 'เลือกตัวละครจากด้านซ้ายเพื่อเริ่มคุย...',
+                    'novel-writer': 'ใช้เทมเพลตด้านซ้ายเพื่อเริ่มเรื่องราว...',
+                    library: "เลือกตัวละครเพื่อใช้งาน",
+                    favorites: "เลือก Prompt ที่ชื่นชอบเพื่อใช้งาน"
+                };
+                messageInput.placeholder = placeholders[currentMode] || "พิมพ์ข้อความของคุณที่นี่...";
+                messageInput.disabled = ['scenepro', 'library', 'favorites', 'character', 'char-chat'].includes(currentMode) && !activeCharacterForChat;
+            }
+
+            function markdownToHtml(text) {
+                let html = text
+                    .replace(/### (.*$)/gim, '<h3>$1</h3>')
+                    .replace(/\*\*(.*?)\*\*/gim, '<strong>$1</strong>')
+                    .replace(/```([\s\S]*?)```/gim, (match, p1) => `<pre><code>${p1.trim()}</code></pre>`)
+                    .replace(/\n/g, '<br>');
+                return html;
+            }
+            
+            async function sendMessage() {
+                const userInput = messageInput.value.trim();
+                if (!userInput || isLoading) return;
+                addToHistoryAndRender(userInput, 'user');
+                messageInput.value = '';
+                const loadingMessage = renderMessage(" ", 'loading');
+                
+                const historyKey = (currentMode === 'char-chat' && activeCharacterForChat) ? `char-chat-${activeCharacterForChat.id}` : currentMode;
+                const historyForAPI = chatHistory[historyKey] || [];
+
+                let systemInstruction = systemPrompts[currentMode];
+                if (currentMode === 'char-chat' && activeCharacterForChat) {
+                    systemInstruction = `You must act as the character '${activeCharacterForChat.nickname}'. Personality: '${activeCharacterForChat.personality}'. Appearance: '${activeCharacterForChat.appearance}'. Respond in character at all times, in Thai.`;
+                }
+                const aiResponse = await callGeminiAPI(historyForAPI, systemInstruction);
+                loadingMessage.remove();
+                addToHistoryAndRender(aiResponse, 'assistant');
+            }
+
+            async function suggestIdea() {
+                if (isLoading || messageInput.disabled) return;
+                const systemInstruction = "You are a creative idea generator. Provide a single, concise, and inspiring idea in Thai based on the user's selected mode. Do not add any extra text or explanation.";
+                setLoading(true);
+                const idea = await callGeminiAPI([], systemInstruction);
+                setLoading(false);
+                if (idea && !idea.includes("ขออภัย")) {
+                    messageInput.value = idea;
+                    messageInput.focus();
+                } else {
+                    alert("ไม่สามารถสร้างไอเดียได้ในขณะนี้");
+                }
+            }
+            
+            async function startNovelGeneration() {
+                const genre = document.getElementById('novelGenre').value.trim();
+                const plot = document.getElementById('novelPlot').value.trim();
+                const charSelect = document.getElementById('novelCharacterSelect');
+                const charId = charSelect.value;
+                if (!genre || !plot) {
+                    alert('กรุณากรอก "แนวเรื่อง" และ "ไอเดีย/พล็อตเรื่อง"');
+                    return;
+                }
+                let userInput = `แนวเรื่อง: ${genre}\nพล็อต: ${plot}`;
+                if (charId) {
+                    const characters = await getDocs(collection(db, "users", userId, "characters"));
+                    let characterData;
+                    characters.forEach(doc => {
+                        if (doc.id === charId) characterData = doc.data();
+                    });
+                    if (characterData) {
+                         userInput += `\nตัวละครเอก: ${characterData.nickname} (ลักษณะ: ${characterData.appearance}, นิสัย: ${characterData.personality})`;
+                    }
+                }
+                messageInput.value = userInput;
+                sendMessage();
+            }
+
+            async function renderCharChatPanel() {
+                const panel = document.getElementById('charChatPanel');
+                if (!panel) return;
+
+                if (activeCharacterForChat) {
+                    panel.innerHTML = `<div class="tip-card"><h4>กำลังคุยกับ:</h4><p style="color: var(--secondary-color); font-size: 1.2rem; font-weight: bold;">${activeCharacterForChat.nickname}</p><button id="endChatBtn" style="width:100%; padding: 0.5rem; margin-top: 1rem; background-color: var(--error-color);">จบการสนทนา</button></div>`;
+                    document.getElementById('endChatBtn').addEventListener('click', endCharacterChat);
+                } else {
+                    const charactersSnapshot = await getDocs(collection(db, "users", userId, "characters"));
+                    const characters = charactersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+                    if (characters.length === 0) {
+                        panel.innerHTML = `<div class="tip-card"><p>ยังไม่มีตัวละครที่บันทึกไว้ ไปที่โหมด "สร้างตัวละคร" เพื่อสร้างตัวละครของคุณก่อน</p></div>`;
+                        return;
+                    }
+                    let charListHtml = '<h4>เลือกตัวละครที่จะคุยด้วย:</h4>';
+                    characters.forEach(char => {
+                        charListHtml += `<div class="tip-card"><h5>${char.nickname}</h5><button class="start-chat-btn" data-id="${char.id}" style="width:100%;">เริ่มคุย</button></div>`;
+                    });
+                    panel.innerHTML = charListHtml;
+                    panel.querySelectorAll('.start-chat-btn').forEach(btn => {
+                        btn.addEventListener('click', () => startCharacterChat(btn.dataset.id));
+                    });
+                }
+            }
+
+            async function startCharacterChat(charId) {
+                const charactersSnapshot = await getDocs(collection(db, "users", userId, "characters"));
+                charactersSnapshot.forEach(doc => {
+                    if (doc.id === charId) {
+                        activeCharacterForChat = { id: doc.id, ...doc.data() };
+                    }
+                });
+
+                if(activeCharacterForChat) {
+                    renderCharChatPanel();
+                    messageInput.disabled = false;
+                    messageInput.placeholder = `คุยกับ ${activeCharacterForChat.nickname}...`;
+                    messageInput.focus();
+                    renderChatHistory(); // Load specific chat history for this character
+                }
+            }
+
+            function endCharacterChat() {
+                activeCharacterForChat = null;
+                renderCharChatPanel();
+                messageInput.disabled = true;
+                messageInput.placeholder = 'เลือกตัวละครจากด้านซ้ายเพื่อเริ่มคุย...';
+            }
+            
+            async function generateFromTemplate() {
+                 const productName = document.getElementById('productName').value;
+                const productFeatures = document.getElementById('productFeatures').value;
+                const targetAudience = document.getElementById('targetAudience').value;
+                const moodConcept = document.getElementById('moodConcept').value;
+
+                if(!productName || !productFeatures || !moodConcept) {
+                    alert('กรุณากรอกข้อมูลสินค้า, คุณสมบัติเด่น และคอนเซ็ปต์');
+                    return;
+                }
+
+                const userInput = `สร้าง prompt โฆษณาสำหรับสินค้า:
+                - ชื่อ: ${productName}
+                - คุณสมบัติ: ${productFeatures}
+                - กลุ่มเป้าหมาย: ${targetAudience}
+                - อารมณ์/คอนเซ็ปต์: ${moodConcept}`;
+
+                addToHistoryAndRender(userInput, 'user');
+                const loadingMessage = renderMessage(" ", 'loading');
+                const aiResponse = await callGeminiAPI([{ role: 'user', parts: [{text: userInput}] }], systemPrompts.scenepro);
+                loadingMessage.remove();
+                addToHistoryAndRender(aiResponse, 'assistant');
+            }
+
+             function renderMessage(text, type, id) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${type}`;
+                messageDiv.dataset.id = id;
+                const avatar = document.createElement('div');
+                avatar.className = 'message-avatar';
+                avatar.textContent = type === 'user' ? '👤' : (activeCharacterForChat && currentMode === 'char-chat' ? '🎭' : '🤖');
+                const content = document.createElement('div');
+                content.className = 'message-content';
+
+                if (type === 'loading') {
+                    content.innerHTML = `<div class="typing-indicator"><span></span><span></span><span></span></div> กำลังสร้าง...`;
+                } else if (type === 'assistant') {
+                    let promptTextForActions = text;
+                    if (['analyzer', 'storyboard', 'novel-writer'].includes(currentMode)) {
+                        content.innerHTML = markdownToHtml(text);
+                        const codeBlocks = text.match(/```([\s\S]*?)```/gim);
+                        if (codeBlocks) promptTextForActions = codeBlocks.map(block => block.replace(/```/g, '')).join('\n\n---\n\n');
+                    } else {
+                        if (currentMode === 'char-chat') {
+                             content.innerHTML = text.replace(/\n/g, '<br>');
+                        } else {
+                            content.innerHTML = `<pre><code>${text}</code></pre>`;
+                        }
+                    }
+
+                    const actions = document.createElement('div');
+                    actions.className = 'message-actions';
+                    actions.innerHTML = `
+                        <button class="action-btn copy-btn" data-prompt="${encodeURIComponent(promptTextForActions)}">คัดลอก</button>
+                        <button class="action-btn favorite-btn" data-prompt="${encodeURIComponent(promptTextForActions)}">⭐ บันทึก</button>
+                    `;
+                    if (currentMode === 'image') {
+                        actions.innerHTML += `<button class="action-btn generate-image-btn" data-prompt="${encodeURIComponent(promptTextForActions)}">🎨 สร้างภาพ</button>`;
+                    }
+                    content.appendChild(actions);
+
+                } else {
+                    content.textContent = text;
+                }
+                
+                messageDiv.appendChild(avatar); messageDiv.appendChild(content);
+                chatMessages.appendChild(messageDiv);
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+                return messageDiv;
+            }
+
+            function addToHistoryAndRender(text, role) {
+                const historyKey = (currentMode === 'char-chat' && activeCharacterForChat) ? `char-chat-${activeCharacterForChat.id}` : currentMode;
+                const message = { role, parts: [{ text }], id: Date.now() };
+                if (!chatHistory[historyKey]) chatHistory[historyKey] = [];
+                if(role === 'user' || role === 'assistant') {
+                    chatHistory[historyKey].push({role: role === 'user' ? 'user' : 'model', parts: message.parts});
+                }
+                saveChatHistory();
+                renderMessage(text, role, message.id);
+            }
+
+            async function saveChatHistory() {
+                if (!userId) return;
+                try {
+                    const mainDocRef = doc(db, "users", userId);
+                    await setDoc(mainDocRef, { chatHistory: chatHistory }, { merge: true });
+                    console.log("Chat history saved to Firestore.");
+                } catch (error) {
+                    console.error("Error saving chat history to Firestore:", error);
+                }
+            }
+
+            function renderChatHistory() {
+                const historyKey = (currentMode === 'char-chat' && activeCharacterForChat) ? `char-chat-${activeCharacterForChat.id}` : currentMode;
+                const historyForMode = chatHistory[historyKey] || [];
+                chatMessages.innerHTML = '';
+                if (historyForMode.length === 0) {
+                     let welcomeText = `สวัสดีครับ! ผมคือ Prompt Generator 🚀<br><br>เริ่มต้นใช้งานโหมด ${currentMode} ได้เลย!`;
+                     if(currentMode === 'char-chat' && activeCharacterForChat) welcomeText = `เริ่มต้นการสนทนากับ ${activeCharacterForChat.nickname} ได้เลย!`;
+                     chatMessages.innerHTML = `<div class="message assistant"><div class="message-avatar">${(currentMode === 'char-chat' && activeCharacterForChat) ? '🎭' : '🤖'}</div><div class="message-content">${welcomeText}</div></div>`;
+                } else {
+                    historyForMode.forEach(msg => renderMessage(msg.parts[0].text, msg.role === 'model' ? 'assistant' : 'user', msg.id));
+                }
+                 chatMessages.scrollTop = chatMessages.scrollHeight;
+            }
+
+            function clearCurrentHistory() {
+                 if (confirm('คุณต้องการล้างประวัติการสนทนาในโหมดนี้ใช่หรือไม่?')) {
+                    const historyKey = (currentMode === 'char-chat' && activeCharacterForChat) ? `char-chat-${activeCharacterForChat.id}` : currentMode;
+                    if (chatHistory[historyKey]) {
+                        chatHistory[historyKey] = [];
+                        saveChatHistory();
+                    }
+                }
+            }
+            
+            const characterModal = document.getElementById('characterCreatorModal');
+            function openCharacterModal() { characterModal.classList.add('show'); }
+            function closeCharacterModal() { characterModal.classList.remove('show'); }
+            
+            async function saveCharacter() {
+                const nickname = document.getElementById('charNickname').value.trim();
+                const appearance = document.getElementById('charAppearance').value.trim();
+                const personality = document.getElementById('charPersonality').value.trim();
+                if (!nickname || !appearance) { alert('กรุณากรอก "ชื่อเรียก/บทบาท" และ "ลักษณะภายนอก"'); return; }
+                const character = { nickname, appearance, personality, createdAt: new Date() };
+                
+                try {
+                    await addDoc(collection(db, "users", userId, "characters"), character);
+                    closeCharacterModal();
+                    alert('บันทึกตัวละครสำเร็จ!');
+                } catch (error) {
+                    console.error("Error saving character: ", error);
+                    alert("เกิดข้อผิดพลาดในการบันทึกตัวละคร");
+                }
+            }
+            
+            async function populateCharacterDropdown() {
+                const selectElement = document.getElementById('novelCharacterSelect');
+                if (!selectElement) return;
+
+                const q = query(collection(db, "users", userId, "characters"), orderBy("createdAt", "desc"));
+                const querySnapshot = await getDocs(q);
+
+                selectElement.innerHTML = '<option value="">-- ไม่เลือก --</option>';
+                querySnapshot.forEach((doc) => {
+                    const character = doc.data();
+                    const option = document.createElement('option');
+                    option.value = doc.id;
+                    option.textContent = character.nickname;
+                    selectElement.appendChild(option);
+                });
+            }
+            
+            async function loadCharacters() {
+                const charListPanel = document.getElementById('characterList');
+                if (!charListPanel) return;
+
+                const q = query(collection(db, "users", userId, "characters"), orderBy("createdAt", "desc"));
+                onSnapshot(q, (querySnapshot) => {
+                    charListPanel.innerHTML = '';
+                    if (querySnapshot.empty) {
+                        charListPanel.innerHTML = `<div class="tip-card"><p>ยังไม่มีตัวละครที่บันทึกไว้</p></div>`;
+                        return;
+                    }
+                    querySnapshot.forEach((doc) => {
+                        const char = { id: doc.id, ...doc.data() };
+                        const charCard = document.createElement('div');
+                        charCard.className = 'tip-card';
+                        charCard.innerHTML = `<h4>${char.nickname}</h4><p>${char.appearance.substring(0,100)}...</p><div style="margin-top: 1rem; display:flex; gap: 0.5rem;"><button class="use-char-btn" data-id="${char.id}">ใช้งาน</button><button class="delete-char-btn" data-id="${char.id}" style="background-color: var(--error-color);">ลบ</button></div>`;
+                        charListPanel.appendChild(charCard);
+                    });
+                });
+            }
+
+            async function useCharacter(id) {
+                 const q = query(collection(db, "users", userId, "characters"));
+                 const querySnapshot = await getDocs(q);
+                 let character;
+                 querySnapshot.forEach(doc => {
+                     if (doc.id === id) character = doc.data();
+                 });
+
+                 if (character) {
+                    let charPrompt = `ตัวละคร: ${character.nickname}\nลักษณะ: ${character.appearance}\nนิสัย: ${character.personality}`;
+                    switchMode('promptmaster');
+                    setTimeout(() => { messageInput.value = charPrompt; messageInput.focus(); }, 100);
+                 }
+            }
+            
+            async function deleteCharacter(id) {
+                if (confirm('คุณต้องการลบตัวละครนี้ใช่หรือไม่?')) {
+                    await deleteDoc(doc(db, "users", userId, "characters", id));
+                }
+            }
+
+            async function saveFavorite(promptText, button) {
+                try {
+                    await addDoc(collection(db, "users", userId, "favorites"), {
+                        prompt: promptText,
+                        mode: currentMode,
+                        createdAt: new Date()
+                    });
+                    button.textContent = '⭐ บันทึกแล้ว!'; button.disabled = true;
+                    setTimeout(() => { button.textContent = '⭐ บันทึก'; button.disabled = false; }, 2000);
+                } catch(e) {
+                    alert('ไม่สามารถบันทึกได้');
+                }
+            }
+
+            async function loadFavorites() {
+                const favListPanel = document.getElementById('favoritesList');
+                 if (!favListPanel) return;
+
+                const q = query(collection(db, "users", userId, "favorites"), orderBy("createdAt", "desc"));
+                onSnapshot(q, (querySnapshot) => {
+                    favListPanel.innerHTML = '';
+                    if (querySnapshot.empty) {
+                        favListPanel.innerHTML = `<div class="tip-card"><p>ยังไม่มี Prompt ที่บันทึกไว้</p></div>`;
+                        return;
+                    }
+                    querySnapshot.forEach((doc) => {
+                        const fav = { id: doc.id, ...doc.data() };
+                        const favCard = document.createElement('div');
+                        favCard.className = 'tip-card';
+                        favCard.innerHTML = `<h4>[${fav.mode}]</h4><p>${fav.prompt.substring(0,150)}...</p><div style="margin-top: 1rem; display:flex; gap: 0.5rem;"><button class="use-fav-btn" data-id="${fav.id}">ใช้งาน</button><button class="delete-fav-btn" data-id="${fav.id}" style="background-color: var(--error-color);">ลบ</button></div>`;
+                        favListPanel.appendChild(favCard);
+                    });
+                });
+            }
+
+            async function useFavorite(id) {
+                 const q = query(collection(db, "users", userId, "favorites"));
+                 const querySnapshot = await getDocs(q);
+                 let favorite;
+                 querySnapshot.forEach(doc => {
+                     if (doc.id === id) favorite = doc.data();
+                 });
+                if (favorite) {
+                    switchMode(favorite.mode);
+                    setTimeout(() => { messageInput.value = favorite.prompt; messageInput.focus(); }, 100);
+                }
+            }
+
+            async function deleteFavorite(id) {
+                if (confirm('คุณต้องการลบ Prompt นี้ใช่หรือไม่?')) {
+                    await deleteDoc(doc(db, "users", userId, "favorites", id));
+                }
+            }
+
+            // --- Event Listeners ---
+            modeButtons.forEach(btn => btn.addEventListener('click', () => switchMode(btn.dataset.mode)));
+            mobileModeDropdown.addEventListener('change', (e) => switchMode(e.target.value));
+            sendButton.addEventListener('click', sendMessage);
+            ideaBtn.addEventListener('click', suggestIdea);
+            messageInput.addEventListener('keydown', (e) => { if (e.key==='Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+            clearHistoryBtn.addEventListener('click', clearCurrentHistory);
+            logoutBtn.addEventListener('click', () => signOut(auth));
+            
+            characterModal.querySelector('.close-btn').addEventListener('click', closeCharacterModal);
+            characterModal.addEventListener('click', (e) => { if (e.target === characterModal) closeCharacterModal(); });
+            document.getElementById('saveCharacterBtn').addEventListener('click', saveCharacter);
+            
+            sidePanelContainer.addEventListener('click', (e) => {
+                if (e.target.classList.contains('use-char-btn')) useCharacter(e.target.dataset.id);
+                if (e.target.classList.contains('delete-char-btn')) deleteCharacter(e.target.dataset.id);
+                if (e.target.classList.contains('use-fav-btn')) useFavorite(e.target.dataset.id);
+                if (e.target.classList.contains('delete-fav-btn')) deleteFavorite(e.target.dataset.id);
+            });
+            
+            chatMessages.addEventListener('click', (e) => {
+                const target = e.target;
+                if (!target.classList.contains('action-btn')) return;
+                const promptText = decodeURIComponent(target.dataset.prompt || '');
+                if (target.classList.contains('copy-btn')) {
+                    navigator.clipboard.writeText(promptText).then(() => { target.textContent = 'คัดลอกแล้ว!'; setTimeout(() => target.textContent = 'คัดลอก', 2000); });
+                }
+                if (target.classList.contains('favorite-btn')) { saveFavorite(promptText, target); }
+                if (target.classList.contains('generate-image-btn')) {
+                    const negativePrompt = document.getElementById('negativePromptInput')?.value.trim() || '';
+                    const finalPrompt = promptText + (negativePrompt ? ` --no ${negativePrompt}` : '');
+                    const messageContentDiv = target.closest('.message-content');
+                    target.closest('.message-actions').remove();
+                    const placeholder = document.createElement('div');
+                    placeholder.className = 'image-loading-placeholder';
+                    placeholder.innerHTML = `<div class="image-loading-spinner"></div><p>กำลังสร้างภาพ...</p>`;
+                    messageContentDiv.appendChild(placeholder);
+                    callImagenAPI(finalPrompt, messageContentDiv);
+                }
+            });
+
+            // --- Initial Load ---
+            initializeFirebase();
+        });
+    </script>
+</body>
+</html>
+
