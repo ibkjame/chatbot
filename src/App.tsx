@@ -1,11 +1,13 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, type FC } from 'react';
+import type { DocumentData } from 'firebase/firestore';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
     onAuthStateChanged, 
     signInWithEmailAndPassword, 
     createUserWithEmailAndPassword, 
-    signOut 
+    signOut,
+    type User
 } from 'firebase/auth';
 import { 
     getFirestore, 
@@ -18,7 +20,6 @@ import {
     deleteDoc, 
     query, 
     orderBy, 
-    getDocs,
     getDoc
 } from 'firebase/firestore';
 
@@ -40,6 +41,32 @@ const IMAGEN_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 const app = initializeApp(firebaseConfig);
 const auth = getAuth(app);
 const db = getFirestore(app);
+
+// --- Type Definitions ---
+interface Character extends DocumentData {
+    id: string;
+    imageUrl?: string;
+    nickname: string;
+    appearance: string;
+    personality: string;
+}
+interface Favorite extends DocumentData {
+    id: string;
+    prompt: string;
+    mode: string;
+}
+interface GalleryItem extends DocumentData {
+    id: string;
+    imageUrl: string;
+    prompt: string;
+}
+interface MessageData {
+    role: 'user' | 'assistant' | 'loading';
+    parts?: { text: string }[];
+    id?: number;
+    text?: string;
+}
+
 
 // --- Helper Components & Data ---
 
@@ -167,7 +194,6 @@ const GlobalStyles = () => (
 const icons = {
   logo: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"></path></svg>,
   send: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"></path></svg>,
-  // Add other icons here for cleanliness
 };
 
 const modes = [
@@ -184,7 +210,7 @@ const modes = [
     { id: 'favorites', label: 'Prompt โปรด', icon: <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg> },
 ];
 
-const systemPrompts = {
+const systemPrompts: { [key: string]: string } = {
     'general-chat': `You are Nova AI, a helpful and creative assistant. Engage in a friendly conversation with the user in Thai. Use emojis and clear line breaks. Always end with an open-ended follow-up question, like "มีอะไรให้ผมช่วยอีกไหมครับ?"`,
     promptmaster: `You are an expert prompt engineer for text-to-video AI. Your task is to take a user's idea and generate a single, detailed, professional, cinematic prompt IN ENGLISH. Incorporate previous context if the user is refining. The prompt must include details about cinematography, lighting, mood, and visual style. After providing the prompt, end your response in Thai with a friendly tone, using emojis and line breaks, and ask for feedback or next steps, like "ชอบ Prompt นี้ไหมครับ? ✨ ต้องการให้ปรับแก้ส่วนไหนเพิ่มเติมบอกได้เลยนะ!".`,
     storyboard: `You are an expert scriptwriter. Take a user's idea and break it down into 3-5 distinct scenes for a short video. For each scene, create a detailed text-to-video prompt IN ENGLISH. The output should be in THAI, clearly structured using Markdown for each scene. After presenting the storyboard, end your response in Thai with a friendly tone and ask a follow-up question, like "นี่คือ Storyboard ที่ร่างไว้ครับ 📜 ชอบโครงเรื่องแบบนี้ไหม หรืออยากจะพัฒนาฉากไหนเป็นพิเศษครับ?".`,
@@ -197,34 +223,34 @@ const systemPrompts = {
 
 function App() {
     // --- State Management ---
-    const [user, setUser] = useState(null);
-    const [userId, setUserId] = useState(null);
+    const [user, setUser] = useState<User | null>(null);
+    const [userId, setUserId] = useState<string | null>(null);
     const [isLoadingApp, setIsLoadingApp] = useState(true);
     const [isLoginModalOpen, setLoginModalOpen] = useState(false);
     
     const [currentMode, setCurrentMode] = useState('general-chat');
-    const [chatHistory, setChatHistory] = useState({});
-    const [currentMessages, setCurrentMessages] = useState([]);
+    const [chatHistory, setChatHistory] = useState<{[key: string]: any[]}>({});
+    const [currentMessages, setCurrentMessages] = useState<MessageData[]>([]);
     const [inputValue, setInputValue] = useState('');
     const [isLoadingResponse, setIsLoadingResponse] = useState(false);
     
     const [isSidePanelOpen, setSidePanelOpen] = useState(false);
-    const [activeCharacterForChat, setActiveCharacterForChat] = useState(null);
+    const [activeCharacterForChat, setActiveCharacterForChat] = useState<Character | null>(null);
 
-    const [characters, setCharacters] = useState([]);
-    const [favorites, setFavorites] = useState([]);
-    const [galleryItems, setGalleryItems] = useState([]);
+    const [characters, setCharacters] = useState<Character[]>([]);
+    const [favorites, setFavorites] = useState<Favorite[]>([]);
+    const [galleryItems, setGalleryItems] = useState<GalleryItem[]>([]);
 
     const [isCharModalOpen, setCharModalOpen] = useState(false);
-    const [editingCharacter, setEditingCharacter] = useState(null);
+    const [editingCharacter, setEditingCharacter] = useState<Character | null>(null);
     
     const [isImageViewerOpen, setImageViewerOpen] = useState(false);
     const [viewingImage, setViewingImage] = useState({ src: '', prompt: '' });
 
-    const chatMessagesEndRef = useRef(null);
+    const chatMessagesEndRef = useRef<HTMLDivElement>(null);
 
     // --- API Call Functions ---
-    const callApi = useCallback(async (url, payload) => {
+    const callApi = useCallback(async (url: string, payload: object) => {
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -274,19 +300,19 @@ function App() {
         // Characters Listener
         const charQuery = query(collection(db, `users/${userId}/characters`), orderBy("createdAt", "desc"));
         const unsubscribeChars = onSnapshot(charQuery, (snapshot) => {
-            setCharacters(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setCharacters(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Character)));
         });
 
         // Favorites Listener
         const favQuery = query(collection(db, `users/${userId}/favorites`), orderBy("createdAt", "desc"));
         const unsubscribeFavs = onSnapshot(favQuery, (snapshot) => {
-            setFavorites(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setFavorites(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Favorite)));
         });
 
         // Gallery Listener
         const galleryQuery = query(collection(db, `users/${userId}/gallery`), orderBy("createdAt", "desc"));
         const unsubscribeGallery = onSnapshot(galleryQuery, (snapshot) => {
-            setGalleryItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
+            setGalleryItems(snapshot.docs.map(d => ({ id: d.id, ...d.data() } as GalleryItem)));
         });
 
         return () => {
@@ -304,13 +330,13 @@ function App() {
             : currentMode;
     }, [currentMode, activeCharacterForChat]);
 
-    const saveHistory = useCallback(async (newHistory) => {
+    const saveHistory = useCallback(async (newHistory: object) => {
         if (!userId) return;
         const userDocRef = doc(db, "users", userId);
         await setDoc(userDocRef, { chatHistory: newHistory }, { merge: true });
     }, [userId]);
 
-    const addMessageToHistory = useCallback((text, role) => {
+    const addMessageToHistory = useCallback((text: string, role: 'user' | 'assistant') => {
         const historyKey = getHistoryKey();
         const newMessage = { role, parts: [{ text }] };
         const currentHistory = chatHistory[historyKey] || [];
@@ -328,7 +354,7 @@ function App() {
         setCurrentMessages(prev => [...prev, newMessage]);
     }, [chatHistory, getHistoryKey, saveHistory]);
     
-    const handleSendMessage = useCallback(async (userInput) => {
+    const handleSendMessage = useCallback(async (userInput: string) => {
         if (!userInput || isLoadingResponse) return;
         
         setInputValue('');
@@ -364,13 +390,13 @@ function App() {
     // Effect to update displayed messages when mode changes
     useEffect(() => {
         const historyKey = getHistoryKey();
-        const messagesForMode = (chatHistory[historyKey] || []).map(msg => ({
-            role: msg.role === 'model' ? 'assistant' : 'user',
+        const messagesForMode: MessageData[] = (chatHistory[historyKey] || []).map((msg: any) => ({
+            role: (msg.role === 'model' ? 'assistant' : 'user') as 'assistant' | 'user',
             parts: msg.parts
         }));
         
         if (messagesForMode.length === 0) {
-             const welcomeMessages = {
+             const welcomeMessages: {[key: string]: string} = {
                 'general-chat': 'สวัสดีครับ! มีอะไรให้ผมช่วยในวันนี้ครับ? ลองถามอะไรก็ได้เลย',
                 'promptmaster': 'เริ่มต้นด้วยการบรรยายฉากที่ต้องการ เช่น "ชายคนหนึ่งวิ่งหนีบนตึกระฟ้าตอนฝนตก"',
                 'novel-writer': 'กรอกแนวเรื่องและพล็อตเริ่มต้นทางด้านซ้ายเพื่อเริ่มสร้างนิยายของคุณ',
@@ -398,7 +424,7 @@ function App() {
 
 
     // --- UI Handlers ---
-    const handleSwitchMode = (newMode) => {
+    const handleSwitchMode = (newMode: string) => {
         setCurrentMode(newMode);
         setActiveCharacterForChat(null);
         if (window.innerWidth <= 1024) {
@@ -426,13 +452,13 @@ function App() {
         );
     }
     
-    const userName = user ? user.email.split('@')[0] : '';
+    const userName = user && user.email ? user.email.split('@')[0] : '';
     const capitalizedUserName = userName.charAt(0).toUpperCase() + userName.slice(1);
     
     return (
         <>
             <GlobalStyles />
-            {isLoginModalOpen && <LoginModal setLoginModalOpen={setLoginModalOpen} />}
+            {isLoginModalOpen && <LoginModal />}
 
             {user && (
                 <div className="container">
@@ -489,9 +515,9 @@ function App() {
                                 }
                             }}
                             activeCharacterForChat={activeCharacterForChat}
-                            onStartCharChat={async (charId) => {
+                            onStartCharChat={(charId) => {
                                 const char = characters.find(c => c.id === charId);
-                                setActiveCharacterForChat(char);
+                                if (char) setActiveCharacterForChat(char);
                             }}
                              onEndCharChat={() => setActiveCharacterForChat(null)}
                              onSendMessage={handleSendMessage}
@@ -507,7 +533,6 @@ function App() {
                             activeCharacterForChat={activeCharacterForChat}
                             chatMessagesEndRef={chatMessagesEndRef}
                             callApi={callApi}
-                            addMessageToHistory={addMessageToHistory}
                             userId={userId}
                          />
                     </div>
@@ -534,8 +559,13 @@ function App() {
 }
 
 // --- Sub-Components ---
-
-const Header = ({ userName, currentMode, onSwitchMode, onToggleMenu }) => {
+interface HeaderProps {
+    userName: string;
+    currentMode: string;
+    onSwitchMode: (mode: string) => void;
+    onToggleMenu: () => void;
+}
+const Header: FC<HeaderProps> = ({ userName, currentMode, onSwitchMode, onToggleMenu }) => {
     return (
         <div className="header">
             <div className="header-top">
@@ -574,30 +604,55 @@ const Header = ({ userName, currentMode, onSwitchMode, onToggleMenu }) => {
     );
 };
 
-const SidePanel = ({ isOpen, currentMode, characters, onOpenCharModal, onUseCharacter, onDeleteCharacter, favorites, onUseFavorite, onDeleteFavorite, galleryItems, onImageViewerOpen, onDeleteGalleryItem, activeCharacterForChat, onStartCharChat, onEndCharChat, onSendMessage, setInputValue }) => {
+interface SidePanelProps {
+    isOpen: boolean;
+    currentMode: string;
+    characters: Character[];
+    favorites: Favorite[];
+    galleryItems: GalleryItem[];
+    onOpenCharModal: (character?: Character) => void;
+    onUseCharacter: (id: string) => void;
+    onDeleteCharacter: (id: string) => void;
+    onUseFavorite: (id: string) => void;
+    onDeleteFavorite: (id: string) => void;
+    onImageViewerOpen: (src: string, prompt: string) => void;
+    onDeleteGalleryItem: (id: string) => void;
+    activeCharacterForChat: Character | null;
+    onStartCharChat: (id: string) => void;
+    onEndCharChat: () => void;
+    onSendMessage: (message: string) => void;
+    setInputValue: (value: string) => void;
+}
+const SidePanel: FC<SidePanelProps> = ({ isOpen, currentMode, characters, onOpenCharModal, onUseCharacter, onDeleteCharacter, favorites, onUseFavorite, onDeleteFavorite, galleryItems, onImageViewerOpen, onDeleteGalleryItem, activeCharacterForChat, onStartCharChat, onEndCharChat, onSendMessage }) => {
     
-    const handleAddImageFromUrl = async (userId) => {
-        const imageUrl = document.getElementById('galleryImageUrl').value.trim();
-        const prompt = document.getElementById('galleryImageDesc').value.trim();
+    const handleAddImageFromUrl = async (userId: string | undefined) => {
+        const imageUrlInput = document.getElementById('galleryImageUrl') as HTMLInputElement;
+        const promptInput = document.getElementById('galleryImageDesc') as HTMLTextAreaElement;
+        const imageUrl = imageUrlInput.value.trim();
+        const prompt = promptInput.value.trim();
         if (!imageUrl || !userId) return;
         
         await addDoc(collection(db, `users/${userId}/gallery`), {
             imageUrl, prompt, createdAt: new Date()
         });
-        document.getElementById('galleryImageUrl').value = '';
-        document.getElementById('galleryImageDesc').value = '';
+        imageUrlInput.value = '';
+        promptInput.value = '';
     };
     
-    const handleNovelStart = async (userId) => {
-        const genre = document.getElementById('novelGenre').value.trim();
-        const plot = document.getElementById('novelPlot').value.trim();
-        const charId = document.getElementById('novelCharacterSelect').value;
+    const handleNovelStart = async () => {
+        const genreInput = document.getElementById('novelGenre') as HTMLInputElement;
+        const plotInput = document.getElementById('novelPlot') as HTMLTextAreaElement;
+        const charSelect = document.getElementById('novelCharacterSelect') as HTMLSelectElement;
+        const genre = genreInput.value.trim();
+        const plot = plotInput.value.trim();
+        const charId = charSelect.value;
+        
         if (!genre || !plot) {
              alert('กรุณากรอก "แนวเรื่อง" และ "ไอเดีย/พล็อตเรื่อง"');
              return;
         }
         let userInput = `แนวเรื่อง: ${genre}\nพล็อต: ${plot}`;
-        if(charId && userId) {
+        if(charId) {
             const char = characters.find(c => c.id === charId);
             if(char) {
                  userInput += `\nตัวละครเอก: ${char.nickname} (ลักษณะ: ${char.appearance}, นิสัย: ${char.personality})`;
@@ -615,7 +670,7 @@ const SidePanel = ({ isOpen, currentMode, characters, onOpenCharModal, onUseChar
             case 'storyboard':
                 return <><h3>📜 Storyboard Mode</h3><div className="tip-card"><h4>สร้าง Storyboard จากเรื่องย่อ</h4><p>ใส่ไอเดียหรือพล็อตเรื่องสั้นๆ ของคุณ แล้ว Gemini จะช่วยแตกออกมาเป็น Prompt สำหรับแต่ละฉาก (Scene) 3-5 ฉากให้โดยอัตโนมัติ</p></div></>;
             case 'image':
-                return <><h3>🖼️ Image Prompt Creator</h3><div className="tip-card"><h4>สร้าง Prompt สำหรับรูปภาพ</h4><p>บรรยายภาพในจินตนาการของคุณ แล้ว Gemini จะสร้าง Prompt ที่ละเอียดเพื่อให้ AI สร้างภาพได้ตรงใจที่สุด</p></div><div className="tip-card"><h4>🚫 Negative Prompt (สิ่งที่ไม่ต้องการ)</h4><div className="form-group"><textarea id="negativePromptInput" className="template-textarea" rows="2" placeholder="เช่น text, watermark, ugly, deformed..."></textarea></div></div></>;
+                return <><h3>🖼️ Image Prompt Creator</h3><div className="tip-card"><h4>สร้าง Prompt สำหรับรูปภาพ</h4><p>บรรยายภาพในจินตนาการของคุณ แล้ว Gemini จะสร้าง Prompt ที่ละเอียดเพื่อให้ AI สร้างภาพได้ตรงใจที่สุด</p></div><div className="tip-card"><h4>🚫 Negative Prompt (สิ่งที่ไม่ต้องการ)</h4><div className="form-group"><textarea id="negativePromptInput" className="template-textarea" rows={2} placeholder="เช่น text, watermark, ugly, deformed..."></textarea></div></div></>;
             case 'analyzer':
                 return <><h3>🧐 Prompt Analyzer</h3><div className="tip-card"><h4>วิเคราะห์และปรับปรุง Prompt</h4><p>วาง Prompt ที่คุณมีอยู่ แล้ว Gemini จะช่วยวิเคราะห์จุดแข็ง จุดอ่อน และให้คำแนะนำเพื่อปรับปรุงให้ดีขึ้น</p></div></>;
             case 'character':
@@ -646,7 +701,7 @@ const SidePanel = ({ isOpen, currentMode, characters, onOpenCharModal, onUseChar
                 return <><h3>🎨 My Gallery</h3>
                     <div className="tip-card"><h4>เพิ่มรูปภาพใหม่จากลิงก์</h4>
                         <div className="form-group"><input type="url" id="galleryImageUrl" className="template-input" placeholder="วาง URL ของรูปภาพ"/></div>
-                        <div className="form-group"><textarea id="galleryImageDesc" className="template-textarea" rows="2" placeholder="คำอธิบายสั้นๆ (ถ้ามี)"></textarea></div>
+                        <div className="form-group"><textarea id="galleryImageDesc" className="template-textarea" rows={2} placeholder="คำอธิบายสั้นๆ (ถ้ามี)"></textarea></div>
                         <button onClick={() => handleAddImageFromUrl(auth.currentUser?.uid)} style={{width:'100%', background: 'var(--primary-gradient)', color: 'white', border: 'none'}}>+ เพิ่มไปยังแกลเลอรี</button>
                     </div><p style={{color:'var(--text-secondary-color)', fontSize: '0.9rem', marginBottom: '1rem'}}>ผลงานรูปภาพที่คุณบันทึกไว้</p>
                     <div id="gallery-grid">{galleryItems.length > 0 ? galleryItems.map(item => (
@@ -677,8 +732,8 @@ const SidePanel = ({ isOpen, currentMode, characters, onOpenCharModal, onUseChar
                         <datalist id="genres"><option value="แฟนตาซี"/><option value="ไซไฟ"/><option value="สืบสวนสอบสวน"/><option value="รักโรแมนติก"/><option value="สยองขวัญ"/></datalist>
                     </div>
                     <div className="form-group"><label>เลือกตัวละครเอก (ถ้ามี)</label><select id="novelCharacterSelect" className="template-select"><option value="">-- ไม่เลือก --</option>{characters.map(c => <option key={c.id} value={c.id}>{c.nickname}</option>)}</select></div>
-                    <div className="form-group"><label>ไอเดีย/พล็อตเรื่องเริ่มต้น</label><textarea id="novelPlot" className="template-textarea" rows="4" placeholder="เช่น ชายหนุ่มคนหนึ่งตื่นขึ้นมาในโลกที่ไม่คุ้นเคย..."></textarea></div>
-                    <button onClick={() => handleNovelStart(auth.currentUser?.uid)} style={{width:'100%', padding: '0.75rem', marginTop: '1rem', backgroundColor: 'var(--secondary-color)', color:'black', fontWeight: 600}}>เริ่มเขียนนิยาย ✨</button>
+                    <div className="form-group"><label>ไอเดีย/พล็อตเรื่องเริ่มต้น</label><textarea id="novelPlot" className="template-textarea" rows={4} placeholder="เช่น ชายหนุ่มคนหนึ่งตื่นขึ้นมาในโลกที่ไม่คุ้นเคย..."></textarea></div>
+                    <button onClick={handleNovelStart} style={{width:'100%', padding: '0.75rem', marginTop: '1rem', backgroundColor: 'var(--secondary-color)', color:'black', fontWeight: 600}}>เริ่มเขียนนิยาย ✨</button>
                 </div></>;
             default:
                 return <h3>Select a mode</h3>;
@@ -692,9 +747,22 @@ const SidePanel = ({ isOpen, currentMode, characters, onOpenCharModal, onUseChar
     );
 };
 
-const ChatPanel = ({ messages, inputValue, setInputValue, onSendMessage, isLoading, currentMode, activeCharacterForChat, chatMessagesEndRef, callApi, addMessageToHistory, userId }) => {
+interface ChatPanelProps {
+    messages: MessageData[];
+    inputValue: string;
+    setInputValue: (value: string) => void;
+    onSendMessage: () => void;
+    isLoading: boolean;
+    currentMode: string;
+    activeCharacterForChat: Character | null;
+    chatMessagesEndRef: React.RefObject<HTMLDivElement | null>;
+    callApi: (url: string, payload: object) => Promise<any>;
+    userId: string | null;
+}
+
+const ChatPanel: FC<ChatPanelProps> = ({ messages, inputValue, setInputValue, onSendMessage, isLoading, currentMode, activeCharacterForChat, chatMessagesEndRef, callApi, userId }) => {
     
-    const placeholders = {
+    const placeholders: {[key: string]: string} = {
         'general-chat': 'คุยกับ AI ได้ทุกเรื่องที่นี่...', 'promptmaster': "สร้างฉากไล่ล่าในเมืองตอนกลางคืน...",
         'storyboard': "เรื่องย่อ: นักบินอวกาศค้นพบดาวเคราะห์ดวงใหม่...", 'image': "แมวใส่แว่นกันแดดบนชายหาด...",
         'analyzer': "วาง Prompt ที่ต้องการวิเคราะห์ที่นี่...", 'character': "บรรยายลักษณะตัวละครที่คุณอยากสร้าง...",
@@ -724,7 +792,6 @@ const ChatPanel = ({ messages, inputValue, setInputValue, onSendMessage, isLoadi
                         activeCharacterForChat={activeCharacterForChat} 
                         currentMode={currentMode}
                         callApi={callApi}
-                        addMessageToHistory={addMessageToHistory}
                         userId={userId}
                      />
                 ))}
@@ -736,7 +803,7 @@ const ChatPanel = ({ messages, inputValue, setInputValue, onSendMessage, isLoadi
                     <textarea
                         className="message-input"
                         placeholder={placeholders[currentMode] || "พิมพ์ข้อความของคุณที่นี่..."}
-                        rows="1"
+                        rows={1}
                         value={inputValue}
                         onChange={(e) => setInputValue(e.target.value)}
                         onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSendMessage(); } }}
@@ -751,14 +818,22 @@ const ChatPanel = ({ messages, inputValue, setInputValue, onSendMessage, isLoadi
     );
 };
 
-const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMessageToHistory, userId }) => {
+interface MessageProps {
+    message: MessageData;
+    activeCharacterForChat: Character | null;
+    currentMode: string;
+    callApi: (url: string, payload: object) => Promise<any>;
+    userId: string | null;
+}
+const Message: FC<MessageProps> = ({ message, activeCharacterForChat, currentMode, callApi, userId }) => {
     
     const [generatingImage, setGeneratingImage] = useState(false);
-    const [generatedImageUrl, setGeneratedImageUrl] = useState(null);
+    const [generatedImageUrl, setGeneratedImageUrl] = useState<string | null>(null);
 
-    const handleGenerateImage = async (prompt) => {
+    const handleGenerateImage = async (prompt: string) => {
         setGeneratingImage(true);
-        const negativePrompt = document.getElementById('negativePromptInput')?.value.trim() || '';
+        const negativePromptInput = document.getElementById('negativePromptInput') as HTMLTextAreaElement;
+        const negativePrompt = negativePromptInput?.value.trim() || '';
         const finalPrompt = prompt + (negativePrompt ? ` --no ${negativePrompt}` : '');
         
         const payload = { instances: [{ prompt: finalPrompt }], parameters: { "sampleCount": 1 } };
@@ -774,7 +849,8 @@ const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMes
         }
     };
     
-    const handleSaveFavorite = async (prompt, button) => {
+    const handleSaveFavorite = async (prompt: string, button: HTMLButtonElement) => {
+        if (!userId) return;
         await addDoc(collection(db, `users/${userId}/favorites`), {
             prompt, mode: currentMode, createdAt: new Date()
         });
@@ -782,7 +858,8 @@ const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMes
         setTimeout(() => { button.textContent = '⭐ บันทึก'; button.disabled = false; }, 2000);
     };
 
-    const handleSaveToGallery = async (imageUrl, prompt, button) => {
+    const handleSaveToGallery = async (imageUrl: string, prompt: string, button: HTMLButtonElement) => {
+        if (!userId) return;
         await addDoc(collection(db, `users/${userId}/gallery`), {
             imageUrl, prompt, createdAt: new Date()
         });
@@ -791,7 +868,7 @@ const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMes
 
 
     const { role, parts } = message;
-    const text = parts?.[0]?.text;
+    const text = parts?.[0]?.text ?? '';
     
     const avatarContent = () => {
         if (role === 'user') return '👤';
@@ -828,12 +905,12 @@ const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMes
                     <div className="message-actions">
                          <button className="action-btn" onClick={(e) => {
                             navigator.clipboard.writeText(promptText);
-                            e.target.textContent = 'คัดลอกแล้ว!';
-                            setTimeout(() => e.target.textContent = 'คัดลอก', 2000);
+                            e.currentTarget.textContent = 'คัดลอกแล้ว!';
+                            setTimeout(() => e.currentTarget.textContent = 'คัดลอก', 2000);
                          }}>คัดลอก</button>
-                         <button className="action-btn" onClick={(e) => handleSaveFavorite(promptText, e.target)}>⭐ บันทึก</button>
+                         <button className="action-btn" onClick={(e) => handleSaveFavorite(promptText, e.currentTarget)}>⭐ บันทึก</button>
                          {currentMode === 'image' && !generatedImageUrl && <button className="action-btn" onClick={() => handleGenerateImage(promptText)}>🎨 สร้างภาพ</button>}
-                         {generatedImageUrl && <button className="action-btn" onClick={(e) => handleSaveToGallery(generatedImageUrl, promptText, e.target)}>💾 บันทึก</button>}
+                         {generatedImageUrl && <button className="action-btn" onClick={(e) => handleSaveToGallery(generatedImageUrl, promptText, e.currentTarget)}>💾 บันทึก</button>}
                     </div>
                 </>
             );
@@ -848,8 +925,11 @@ const Message = ({ message, activeCharacterForChat, currentMode, callApi, addMes
         </div>
     );
 };
-
-const StatusBar = ({ isLoading, onClearHistory }) => (
+interface StatusBarProps {
+    isLoading: boolean;
+    onClearHistory: () => void;
+}
+const StatusBar: FC<StatusBarProps> = ({ isLoading, onClearHistory }) => (
     <div className="status-bar">
         <div className="status-indicator">
             <span className={`status-dot ${!isLoading ? 'active' : ''}`}></span>
@@ -861,14 +941,14 @@ const StatusBar = ({ isLoading, onClearHistory }) => (
     </div>
 );
 
-
-const LoginModal = ({ setLoginModalOpen }) => {
+interface LoginModalProps {}
+const LoginModal: FC<LoginModalProps> = () => {
     const [isLoginMode, setIsLoginMode] = useState(true);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState('');
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
         if (!email || !password) {
@@ -881,8 +961,7 @@ const LoginModal = ({ setLoginModalOpen }) => {
             } else {
                 await createUserWithEmailAndPassword(auth, email, password);
             }
-            // onAuthStateChanged will handle closing the modal
-        } catch (err) {
+        } catch (err: any) {
              let message = "เกิดข้อผิดพลาด กรุณาลองใหม่";
              switch (err.code) {
                 case 'auth/wrong-password': message = 'รหัสผ่านไม่ถูกต้อง'; break;
@@ -923,7 +1002,12 @@ const LoginModal = ({ setLoginModalOpen }) => {
     );
 };
 
-const CharacterModal = ({ character, onClose, userId }) => {
+interface CharacterModalProps {
+    character: Character | null;
+    onClose: () => void;
+    userId: string | null;
+}
+const CharacterModal: FC<CharacterModalProps> = ({ character, onClose, userId }) => {
     const [formData, setFormData] = useState({
         imageUrl: character?.imageUrl || '',
         nickname: character?.nickname || '',
@@ -931,14 +1015,14 @@ const CharacterModal = ({ character, onClose, userId }) => {
         personality: character?.personality || '',
     });
 
-    const handleChange = (e) => {
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
         const { id, value } = e.target;
         setFormData(prev => ({ ...prev, [id]: value }));
     };
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!formData.nickname || !formData.appearance) {
+        if (!formData.nickname || !formData.appearance || !userId) {
             alert('กรุณากรอก "ชื่อเรียก/บทบาท" และ "ลักษณะภายนอก"');
             return;
         }
@@ -974,11 +1058,11 @@ const CharacterModal = ({ character, onClose, userId }) => {
                     </div>
                     <div className="form-group">
                         <label>รายละเอียดลักษณะภายนอก*</label>
-                        <textarea id="appearance" rows="4" value={formData.appearance} onChange={handleChange} required placeholder="เช่น หญิงสาวอายุ 25 ปี, ผมสีดำยาว, ตาสีน้ำตาล..."></textarea>
+                        <textarea id="appearance" rows={4} value={formData.appearance} onChange={handleChange} required placeholder="เช่น หญิงสาวอายุ 25 ปี, ผมสีดำยาว, ตาสีน้ำตาล..."></textarea>
                     </div>
                     <div className="form-group">
                         <label>บุคลิกและนิสัย</label>
-                        <textarea id="personality" rows="3" value={formData.personality} onChange={handleChange} placeholder="เช่น มั่นใจ, ฉลาด, อบอุ่น..."></textarea>
+                        <textarea id="personality" rows={3} value={formData.personality} onChange={handleChange} placeholder="เช่น มั่นใจ, ฉลาด, อบอุ่น..."></textarea>
                     </div>
                     <button type="submit" style={{width: '100%', padding: '0.75rem', background: 'var(--primary-gradient)', color: 'white', fontWeight: 600, border: 'none'}}>บันทึกตัวละคร</button>
                 </form>
@@ -986,8 +1070,12 @@ const CharacterModal = ({ character, onClose, userId }) => {
         </div>
     );
 };
-
-const ImageViewerModal = ({ src, prompt, onClose }) => {
+interface ImageViewerModalProps {
+    src: string;
+    prompt: string;
+    onClose: () => void;
+}
+const ImageViewerModal: FC<ImageViewerModalProps> = ({ src, prompt, onClose }) => {
     return (
         <div className="modal show" id="image-viewer-modal" onClick={onClose}>
             <span className="close-btn" style={{ color: 'white', fontSize: '40px' }}>&times;</span>
@@ -1003,3 +1091,4 @@ const ImageViewerModal = ({ src, prompt, onClose }) => {
 
 
 export default App;
+
